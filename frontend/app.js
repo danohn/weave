@@ -228,9 +228,7 @@ function renderTokens() {
       ? `<span class="badge badge-used"><span class="badge-pip"></span>${e(usedNode)}</span>`
       : `<span class="badge badge-unused"><span class="badge-pip"></span>Unused</span>`;
 
-    const deleteBtn = !t.used_at
-      ? `<button class="row-btn" onclick="doDeleteToken('${e(t.id)}','${e(t.label)}')">Delete</button>`
-      : '';
+    const deleteBtn = `<button class="row-btn" onclick="doDeleteToken('${e(t.id)}','${e(t.label)}')">Delete</button>`;
 
     return `<tr>
       <td class="td-name">${e(t.label)}</td>

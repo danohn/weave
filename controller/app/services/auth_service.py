@@ -26,7 +26,5 @@ async def delete_token(token_id: str, session: AsyncSession) -> None:
     token = result.scalar_one_or_none()
     if not token:
         raise HTTPException(status_code=404, detail="Token not found")
-    if token.used_at is not None:
-        raise HTTPException(status_code=400, detail="Token has already been used")
     await session.delete(token)
     await session.commit()
