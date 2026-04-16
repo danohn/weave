@@ -89,6 +89,11 @@ async def serve_js():
     return FileResponse(STATIC_DIR / "app.js", media_type="application/javascript")
 
 
+@app.get("/static/logo.svg", include_in_schema=False)
+async def serve_logo():
+    return FileResponse(STATIC_DIR / "logo.svg", media_type="image/svg+xml")
+
+
 @app.get("/health", tags=["health"])
 async def health(session: AsyncSession = Depends(get_session)) -> dict[str, Any]:
     result = await session.execute(select(func.count()).select_from(Node))
