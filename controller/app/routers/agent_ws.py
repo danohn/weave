@@ -72,11 +72,18 @@ async def agent_ws(websocket: WebSocket, node_id: str) -> None:
             # Mark the node OFFLINE immediately on disconnect rather than waiting
             # for the stale heartbeat sweep. If it was a transient blip the next
             # heartbeat will auto-recover it to ACTIVE within one interval.
-            # Re-fetch so we act on the current status, not the state at connect time.
-            result = await session.execute(select(Node).where(Node.id == node_id))
-            current = result.scalar_one_or_none()
-            if current and current.status == NodeStatus.ACTIVE:
-                logger.info("Agent %s disconnected — marking OFFLINE", node_id)
-                await node_service.mark_node_offline(current, session)
-                await broadcast_state(session)
-                await broadcast_peers(session)
+            # Use a fresh session — the long-lived WebSocket session may be in a
+            # bad state after an abrupt disconnect.
+            try:
+                async with AsyncSessionLocal() as offline_session:
+                    result = await offline_session.execute(
+                        select(Node).where(Node.id == node_id)
+                    )
+                    current = result.scalar_one_or_none()
+                    if current and current.status == NodeStatus.ACTIVE:
+                        logger.info("Agent %s disconnected — marking OFFLINE", node_id)
+                        await node_service.mark_node_offline(current, offline_session)
+                        await broadcast_state(offline_session)
+                        await broadcast_peers(offline_session)
+            except Exception:
+                logger.exception("Failed to mark agent %s offline on disconnect", node_id)
