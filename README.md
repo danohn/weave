@@ -25,18 +25,42 @@ ADMIN_TOKEN=secret uv run uvicorn app.main:app --reload
 # Point the dashboard at http://localhost:8000 by opening frontend/index.html
 ```
 
-### Production (Docker)
+### Production (Docker + Traefik)
+
+Copy `.env.example` to `.env` and fill in your values:
 
 ```bash
-ADMIN_TOKEN=secret docker compose up -d --build
+cp .env.example .env
 ```
 
-nginx listens on port `8005` and serves the dashboard at `http://<host>:8005`.
-API docs are available at `http://<host>:8005/docs`.
+```ini
+ADMIN_TOKEN=your-secret-token
+WEAVE_DOMAIN=weave.example.com
+TRAEFIK_MIDDLEWARE=chain-internal@file   # optional
+```
+
+Then start the stack:
+
+```bash
+docker compose up -d --build
+```
+
+The dashboard and API will be available at `https://<WEAVE_DOMAIN>`. The stack expects an external Docker network named `backend` and a running Traefik instance attached to it.
 
 ## Configuration
 
-All variables are set via environment or a `.env` file in `controller/`.
+### Docker environment (`.env`)
+
+| Variable | Required | Description |
+|---|---|---|
+| `ADMIN_TOKEN` | Yes | Bearer token for all admin endpoints |
+| `WEAVE_DOMAIN` | Yes | Domain Traefik routes to the dashboard and API |
+| `TRAEFIK_MIDDLEWARE` | No | Traefik middleware chain to apply (e.g. `chain-internal@file`) |
+| `VPN_SUBNET` | No | Overlay subnet to allocate VPN IPs from (default: `10.0.0.0/24`) |
+
+### Controller settings
+
+These can be set in `controller/.env` for local development or passed as environment variables in Docker.
 
 | Variable | Default | Description |
 |---|---|---|
