@@ -20,6 +20,20 @@
       --gray-600: #525252;
       --gray-700: #404040;
       --gray-800: #262626;
+
+      /* Status colours */
+      --green-bg:  #f0fdf4;
+      --green-text: #15803d;
+      --green-pip:  #16a34a;
+      --green-dot:  #22c55e;
+
+      --amber-bg:   #fffbeb;
+      --amber-text: #b45309;
+      --amber-pip:  #d97706;
+
+      --red-bg:   #fef2f2;
+      --red-text: #b91c1c;
+      --red-pip:  #dc2626;
     }
 
     body {
@@ -89,7 +103,7 @@
       transition: background 0.3s;
     }
 
-    .health-dot.ok    { background: var(--black); }
+    .health-dot.ok    { background: var(--green-dot); }
     .health-dot.error { background: var(--gray-400); }
 
     /* auto-refresh toggle */
@@ -266,8 +280,8 @@
       color: var(--black);
     }
 
-    .stat-card.dim .stat-num { color: var(--gray-300); }
-    .stat-card.muted .stat-num { color: var(--gray-400); }
+    .stat-card.dim .stat-num   { color: var(--red-pip); }
+    .stat-card.muted .stat-num { color: var(--amber-pip); }
 
     /* ── Section header ───────────────────────────────────────── */
     .section-head {
@@ -357,18 +371,14 @@
       flex-shrink: 0;
     }
 
-    .badge-active  { background: var(--black); color: var(--white); }
-    .badge-active .badge-pip { background: rgba(255,255,255,.5); }
+    .badge-active  { background: var(--green-bg); color: var(--green-text); }
+    .badge-active .badge-pip { background: var(--green-pip); }
 
-    .badge-pending {
-      background: var(--white);
-      color: var(--black);
-      border: 1px solid var(--black);
-    }
-    .badge-pending .badge-pip { background: var(--black); }
+    .badge-pending { background: var(--amber-bg); color: var(--amber-text); }
+    .badge-pending .badge-pip { background: var(--amber-pip); }
 
-    .badge-offline { background: var(--gray-100); color: var(--gray-500); }
-    .badge-offline .badge-pip { background: var(--gray-400); }
+    .badge-offline { background: var(--red-bg); color: var(--red-text); }
+    .badge-offline .badge-pip { background: var(--red-pip); }
 
     .badge-revoked { background: var(--gray-100); color: var(--gray-400); text-decoration: line-through; }
     .badge-revoked .badge-pip { background: var(--gray-300); }
