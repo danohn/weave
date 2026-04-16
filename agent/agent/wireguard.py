@@ -1,36 +1,21 @@
 """
-WireGuard interface management via kernel UAPI and iproute2.
+WireGuard interface management via iproute2 and the wg CLI.
 
-Replaces wg-quick with direct kernel communication:
-  - Interface lifecycle via `ip link` / `ip addr` subprocesses
-  - WireGuard keys and peers via the UAPI Unix socket at
-    /var/run/wireguard/<interface>.sock
-
-The key benefit over wg-quick is sync_peers(): it atomically replaces
-the peer list without tearing the interface down, so existing sessions
-with unchanged peers survive uninterrupted.
+Interface lifecycle is handled with `ip link` / `ip addr`. Peer
+synchronisation uses `wg syncconf`, which atomically replaces the peer
+list on a live interface without tearing it down — existing sessions with
+unchanged peers are unaffected.
 """
 
-import base64
-import binascii
 import logging
-import socket as _socket
+import os
 import subprocess
-import time
+import tempfile
 from pathlib import Path
 
 from agent.controller import Peer
 
 logger = logging.getLogger(__name__)
-
-
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
-
-def _b64_to_hex(b64: str) -> str:
-    """Base64-encoded WireGuard key → 64-char hex string required by UAPI."""
-    return binascii.hexlify(base64.b64decode(b64)).decode()
 
 
 def _run(cmd: list[str], input: str | None = None) -> str:
@@ -45,41 +30,6 @@ def _interface_exists(interface: str) -> bool:
         ["ip", "link", "show", interface], capture_output=True
     ).returncode == 0
 
-
-def _uapi(interface: str, msg: str) -> None:
-    """
-    Send a UAPI SET command to the WireGuard kernel socket and verify errno.
-
-    The socket at /var/run/wireguard/<interface>.sock is created by the
-    kernel module when the interface is added via netlink.  We retry briefly
-    in case there is a small delay between `ip link add` and socket creation.
-    """
-    sock_path = Path(f"/var/run/wireguard/{interface}.sock")
-    for _ in range(20):
-        if sock_path.exists():
-            break
-        time.sleep(0.1)
-    else:
-        raise RuntimeError(f"UAPI socket not found: {sock_path}")
-
-    with _socket.socket(_socket.AF_UNIX, _socket.SOCK_STREAM) as s:
-        s.connect(str(sock_path))
-        s.sendall(msg.encode())
-        buf = b""
-        while not buf.endswith(b"\n\n"):
-            chunk = s.recv(4096)
-            if not chunk:
-                break
-            buf += chunk
-
-    for line in buf.decode().splitlines():
-        if line.startswith("errno=") and line != "errno=0":
-            raise RuntimeError(f"WireGuard UAPI error on {interface!r}: {line}")
-
-
-# ---------------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------------
 
 def ensure_private_key(key_file: str) -> str:
     """
@@ -110,48 +60,53 @@ def setup_interface(
     listen_port: int,
 ) -> None:
     """
-    Create and configure the WireGuard interface if not already present,
-    then apply the private key and listen port via UAPI.
+    Create and configure the WireGuard interface if not already present.
 
     Idempotent: safe to call on an interface that already exists (e.g. after
-    an agent restart).  The interface and its VPN address persist across
-    agent restarts so traffic continues during brief outages.
+    an agent restart). The interface and its VPN address persist across agent
+    restarts so traffic continues during brief outages.
     """
     if not _interface_exists(interface):
         logger.info("Creating interface %s with address %s/24", interface, vpn_ip)
         _run(["ip", "link", "add", interface, "type", "wireguard"])
         _run(["ip", "addr", "add", f"{vpn_ip}/24", "dev", interface])
-        _run(["ip", "link", "set", interface, "up"])
     else:
         logger.info("Interface %s already exists — reconfiguring", interface)
-        _run(["ip", "link", "set", interface, "up"])
 
-    private_key = Path(private_key_file).read_text().strip()
-    _uapi(
-        interface,
-        f"set=1\nprivate_key={_b64_to_hex(private_key)}\nlisten_port={listen_port}\n\n",
-    )
+    _run(["wg", "set", interface,
+          "private-key", private_key_file,
+          "listen-port", str(listen_port)])
+    _run(["ip", "link", "set", interface, "up"])
     logger.info("Interface %s configured (port %d)", interface, listen_port)
 
 
 def sync_peers(interface: str, peers: list[Peer]) -> None:
     """
-    Atomically replace the full peer list via UAPI — no interface teardown.
+    Atomically replace the full peer list using `wg syncconf`.
 
-    replace_peers=true tells the kernel to remove any peer not mentioned in
-    this message, so the result is always exactly *peers*.  Sessions with
-    peers whose endpoint/keys have not changed are unaffected.
+    syncconf applies only the diff between the current and desired state,
+    so sessions with peers whose configuration has not changed are
+    unaffected.
     """
-    lines = ["set=1", "replace_peers=true"]
+    lines = []
     for peer in peers:
         lines += [
-            f"public_key={_b64_to_hex(peer.wireguard_public_key)}",
-            f"endpoint={peer.preferred_endpoint}:{peer.endpoint_port}",
-            f"allowed_ip={peer.vpn_ip}/32",
-            "persistent_keepalive_interval=25",
+            "[Peer]",
+            f"PublicKey = {peer.wireguard_public_key}",
+            f"Endpoint = {peer.preferred_endpoint}:{peer.endpoint_port}",
+            f"AllowedIPs = {peer.vpn_ip}/32",
+            "PersistentKeepalive = 25",
+            "",
         ]
-    lines += ["", ""]  # UAPI message terminator (double newline)
-    _uapi(interface, "\n".join(lines))
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".conf", delete=False) as f:
+        f.write("\n".join(lines))
+        tmp = f.name
+    try:
+        _run(["wg", "syncconf", interface, tmp])
+    finally:
+        os.unlink(tmp)
+
     logger.debug("Synced %d peer(s) on %s", len(peers), interface)
 
 
