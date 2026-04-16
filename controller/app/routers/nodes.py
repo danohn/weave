@@ -48,6 +48,21 @@ async def heartbeat(
     return HeartbeatResponse(status=node.status, last_seen=node.last_seen)
 
 
+@router.post("/{node_id}/offline", status_code=204)
+async def go_offline(
+    node_id: str,
+    current_node: Node = Depends(get_current_node),
+    session: AsyncSession = Depends(get_session),
+) -> None:
+    """Called by the agent on clean shutdown to immediately mark itself OFFLINE."""
+    if str(current_node.id) != node_id:
+        raise HTTPException(status_code=403, detail="Token does not match node")
+    if current_node.status == NodeStatus.ACTIVE:
+        await node_service.mark_node_offline(current_node, session)
+        await broadcast_state(session)
+        await broadcast_peers(session)
+
+
 @router.patch("/{node_id}/activate", response_model=NodeAdminResponse)
 async def activate(
     node_id: str,

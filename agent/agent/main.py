@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import signal
 import sys
 
 from agent import wireguard as wg
@@ -12,7 +13,12 @@ from agent import state as state_store
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    force=True,  # replace any handlers added by imported libraries
 )
+# Silence noisy third-party request logs
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+logging.getLogger("websockets").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 
@@ -146,9 +152,32 @@ async def run() -> None:
 
     logger.info("Interface %s is up — entering main loop", settings.INTERFACE)
 
+    loop = asyncio.get_running_loop()
+    shutdown_event = asyncio.Event()
+
+    def _on_sigterm() -> None:
+        logger.info("Received SIGTERM — initiating graceful shutdown")
+        shutdown_event.set()
+
+    loop.add_signal_handler(signal.SIGTERM, _on_sigterm)
+
+    async def _shutdown_watcher() -> None:
+        await shutdown_event.wait()
+        try:
+            await client.go_offline(node.node_id, node.auth_token)
+            logger.info("Controller notified — node marked OFFLINE")
+        except Exception as exc:
+            logger.warning("Could not notify controller of shutdown: %s", exc)
+        # Cancel all sibling tasks so gather() returns cleanly
+        for task in asyncio.all_tasks():
+            if task is not asyncio.current_task():
+                task.cancel()
+
     await asyncio.gather(
         heartbeat_loop(client, node, settings.HEARTBEAT_INTERVAL),
         peer_loop(client, node, settings),
+        _shutdown_watcher(),
+        return_exceptions=True,
     )
 
 

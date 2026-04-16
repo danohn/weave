@@ -119,6 +119,14 @@ async def expire_stale_nodes(session: AsyncSession, threshold_seconds: int) -> i
     return len(stale)
 
 
+async def mark_node_offline(node: Node, session: AsyncSession) -> Node:
+    """Immediately mark a node OFFLINE (called on clean agent shutdown)."""
+    node.status = NodeStatus.OFFLINE
+    await session.commit()
+    await session.refresh(node)
+    return node
+
+
 async def activate_node(node_id: str, session: AsyncSession) -> Node:
     result = await session.execute(select(Node).where(Node.id == node_id))
     node = result.scalar_one_or_none()

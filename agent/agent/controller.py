@@ -64,6 +64,16 @@ class ControllerClient:
             resp.raise_for_status()
             return HeartbeatResponse(**resp.json())
 
+    async def go_offline(self, node_id: str, token: str) -> None:
+        """Notify the controller that this node is shutting down cleanly."""
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                f"{self._base}/api/v1/nodes/{node_id}/offline",
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=5,
+            )
+            resp.raise_for_status()
+
     def peer_websocket(self, node_id: str, token: str):
         """Return a websockets connection context manager for the peer update stream."""
         ws_url = (
