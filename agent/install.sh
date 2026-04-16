@@ -8,7 +8,7 @@ usage() {
 Usage: $0 --controller-url URL --endpoint-ip IP [OPTIONS]
 
 Required:
-  --controller-url URL    Controller base URL (e.g. http://10.18.20.5:8005)
+  --controller-url URL    Controller base URL (e.g. http://192.168.1.1:8005)
   --endpoint-ip IP        This node's public IP reported to the controller
 
 Optional:

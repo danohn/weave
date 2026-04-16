@@ -127,7 +127,7 @@ curl -s -X POST http://localhost:8000/api/v1/nodes/register \
   -d '{
     "name": "sdn-4",
     "wireguard_public_key": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
-    "endpoint_ip": "10.18.20.167",
+    "endpoint_ip": "192.168.1.100",
     "endpoint_port": 51820,
     "preauth_token": "abc123..."
   }'
