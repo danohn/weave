@@ -68,8 +68,8 @@ These can be set in `controller/.env` for local development or passed as environ
 | `DATABASE_URL` | `sqlite+aiosqlite:///./weave.db` | SQLAlchemy async DB URL |
 | `VPN_SUBNET` | `10.0.0.0/24` | Overlay subnet to allocate VPN IPs from |
 | `REQUIRE_PREAUTH` | `true` | Reject registrations that don't supply a valid pre-auth token |
-| `STALE_THRESHOLD_SECONDS` | `120` | Seconds without a heartbeat before a node is marked OFFLINE |
-| `STALE_CHECK_INTERVAL` | `30` | How often the expiry sweep runs |
+| `STALE_THRESHOLD_SECONDS` | `75` | Seconds without a heartbeat before a node is marked OFFLINE |
+| `STALE_CHECK_INTERVAL` | `15` | How often the expiry sweep runs |
 
 To use PostgreSQL: set `DATABASE_URL=postgresql+asyncpg://user:pass@host:5432/db` and run `uv add asyncpg` in `controller/`.
 
@@ -113,11 +113,46 @@ cat /etc/weave/state.json
 wg show wg0
 ```
 
+### Verifying the VPN works
+
+After the node is `ACTIVE`, confirm WireGuard is up and peers are wired in:
+
+```bash
+wg show wg0
+# Should list one [Peer] block per other active node, each with an endpoint and allowed IP
+```
+
+Then ping another node's VPN IP (shown in the dashboard or `state.json`):
+
+```bash
+ping 10.0.0.1    # replace with the VPN IP of any other active node
+```
+
+If `wg show` lists peers but pings fail, check the firewall section below.
+
+### Firewall requirements
+
+WireGuard communicates directly between nodes over UDP. **Every node must allow inbound UDP on port 51820** (or whichever port you configured with `--endpoint-port`). Without this, nodes will appear `ACTIVE` in the dashboard but pass no traffic.
+
+On nodes using `ufw`:
+
+```bash
+ufw allow 51820/udp
+```
+
+On nodes using `iptables` directly:
+
+```bash
+iptables -A INPUT -p udp --dport 51820 -j ACCEPT
+```
+
+Cloud providers (AWS, GCP, Hetzner, etc.) also require an inbound rule in their security group / firewall console for UDP 51820.
+
 ---
 
 ## API reference
 
-The base URL in examples below is `http://localhost:8000` (local dev). In production replace with `http://<host>:8005`.
+The base URL in examples below is `http://localhost:8000` (local dev). In production replace with `https://<WEAVE_DOMAIN>`.
 
 Admin endpoints require `Authorization: Bearer <ADMIN_TOKEN>`.
 Node endpoints require `Authorization: Bearer <auth_token>` (returned at registration).
@@ -162,12 +197,13 @@ curl -s -X POST http://localhost:8000/api/v1/nodes/register \
   -d '{
     "name": "sdn-4",
     "wireguard_public_key": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
-    "endpoint_ip": "192.168.1.100",
     "endpoint_port": 51820,
     "preauth_token": "abc123..."
   }'
 # {"id": "...", "auth_token": "...", "vpn_ip": "10.0.0.4"}
 ```
+
+> The endpoint IP is not sent by the agent — the controller infers it from the source address of the HTTP request.
 
 #### `POST /api/v1/nodes/{id}/heartbeat`
 
@@ -181,9 +217,7 @@ curl -s -X POST http://localhost:8000/api/v1/nodes/<id>/heartbeat \
 
 #### `GET /api/v1/nodes/{id}/peers`
 
-Returns all `ACTIVE` peers visible to this node (excludes self, `PENDING`, `OFFLINE`, and `REVOKED` nodes). Includes NAT traversal hints.
-
-If the peer's `reflected_endpoint_ip` (as observed by the controller) differs from their self-reported `endpoint_ip`, `nat_detected` is `true` and `preferred_endpoint` is set to the reflected IP for hole-punching.
+Returns all `ACTIVE` peers visible to this node (excludes self, `PENDING`, `OFFLINE`, and `REVOKED` nodes). The `preferred_endpoint` is always the IP the controller observed the peer connecting from.
 
 ```bash
 curl -s http://localhost:8000/api/v1/nodes/<id>/peers \
@@ -247,10 +281,11 @@ POST /register (no token)            ->  PENDING  (requires REQUIRE_PREAUTH=fals
                              PATCH /activate (admin)
                                             |
                                          ACTIVE   -- visible to peers
-                                            |
-                              no heartbeat for 120s
-                                            |
-                                         OFFLINE  -- excluded from peer lists
+                                          /   \
+                          clean shutdown /     \ no heartbeat for 75s
+                     (agent sends SIGTERM)       (crash or network loss)
+                                        /         \
+                                     OFFLINE  -- excluded from peer lists
                                             |
                               heartbeat received
                                             |

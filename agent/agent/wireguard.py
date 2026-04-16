@@ -114,7 +114,12 @@ def sync_peers(
             "",
         ]
 
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".conf", delete=False) as f:
+    # Write to /etc/weave/ (mode 700) rather than /tmp so the private key
+    # is never visible to other users even briefly.
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".conf", delete=False, dir="/etc/weave"
+    ) as f:
+        os.chmod(f.fileno(), 0o600)
         f.write("\n".join(lines))
         tmp = f.name
     try:
@@ -135,6 +140,6 @@ def teardown(interface: str) -> None:
 def peer_signature(peers: list[Peer]) -> frozenset:
     """Hashable representation of a peer list for change detection."""
     return frozenset(
-        (p.wireguard_public_key, p.preferred_endpoint, p.endpoint_port)
+        (p.wireguard_public_key, p.vpn_ip, p.preferred_endpoint, p.endpoint_port)
         for p in peers
     )

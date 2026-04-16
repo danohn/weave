@@ -3,10 +3,32 @@
 # Designed to be run directly via curl — no local repo checkout required:
 #
 #   curl -fsSL https://raw.githubusercontent.com/danohn/weave/refs/heads/main/agent/install.sh \
-#     | bash -s -- --controller-url URL --endpoint-ip IP [OPTIONS]
+#     | bash -s -- --controller-url URL [OPTIONS]
 #
 set -euo pipefail
 
+# ── Logging ─────────────────────────────────────────────────────────────────
+LOG_FILE="/tmp/weave-install.log"
+: > "$LOG_FILE"   # truncate
+
+CURRENT_STEP="init"
+
+log()  { echo "$*" | tee -a "$LOG_FILE"; }
+step() { CURRENT_STEP="$*"; log ""; log "  → $*"; }
+info() { log "    $*"; }
+err()  {
+  echo ""
+  echo "  ✗ Installation failed. Details:"
+  echo "      $LOG_FILE"
+  echo ""
+  tail -20 "$LOG_FILE" | sed 's/^/    /'
+  echo ""
+  echo "WEAVE_INSTALL=failed step=\"${CURRENT_STEP}\" log=${LOG_FILE}"
+  exit 1
+}
+trap err ERR
+
+# ── Usage ────────────────────────────────────────────────────────────────────
 usage() {
   cat <<EOF
 Usage: $0 --controller-url URL [OPTIONS]
@@ -26,11 +48,11 @@ EOF
 }
 
 if [ "$(id -u)" -ne 0 ]; then
-  echo "Run as root" >&2
+  echo "Error: run as root" >&2
   exit 1
 fi
 
-# Defaults
+# ── Argument parsing ──────────────────────────────────────────────────────────
 CONTROLLER_URL=""
 NODE_NAME="$(hostname)"
 PREAUTH_TOKEN=""
@@ -39,14 +61,13 @@ INTERFACE="wg0"
 HEARTBEAT_INTERVAL="30"
 PEER_POLL_INTERVAL="60"
 
-# Parse arguments
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --controller-url)   CONTROLLER_URL="$2";   shift 2 ;;
-    --node-name)        NODE_NAME="$2";        shift 2 ;;
-    --preauth-token)    PREAUTH_TOKEN="$2";    shift 2 ;;
-    --endpoint-port)    ENDPOINT_PORT="$2";    shift 2 ;;
-    --interface)        INTERFACE="$2";        shift 2 ;;
+    --controller-url)     CONTROLLER_URL="$2";     shift 2 ;;
+    --node-name)          NODE_NAME="$2";           shift 2 ;;
+    --preauth-token)      PREAUTH_TOKEN="$2";       shift 2 ;;
+    --endpoint-port)      ENDPOINT_PORT="$2";       shift 2 ;;
+    --interface)          INTERFACE="$2";           shift 2 ;;
     --heartbeat-interval) HEARTBEAT_INTERVAL="$2"; shift 2 ;;
     --peer-poll-interval) PEER_POLL_INTERVAL="$2"; shift 2 ;;
     *) echo "Unknown option: $1"; usage ;;
@@ -58,42 +79,68 @@ if [[ -z "$CONTROLLER_URL" ]]; then
   usage
 fi
 
-# wireguard-tools provides the wg binary (used for key generation)
-# git is required by uv to install the agent directly from GitHub
-apt-get update -y
-apt-get install -y wireguard-tools git
-
-# Install uv if not present
-if ! command -v uv &>/dev/null; then
-  curl -fsSL https://astral.sh/uv/install.sh | sh
-  export PATH="$HOME/.local/bin:$PATH"
+# ── Idempotency check ────────────────────────────────────────────────────────
+if [[ -f "/etc/weave/state.json" ]]; then
+  echo ""
+  echo "  ⚠ Warning: /etc/weave/state.json already exists."
+  echo "    This node has previously registered with a controller."
+  echo "    Re-running will overwrite agent.env and restart the service,"
+  echo "    but state.json (node ID and VPN IP) will be preserved."
+  echo ""
+  echo "    To force a clean re-registration, remove it first:"
+  echo "      rm /etc/weave/state.json"
+  echo ""
+  read -r -p "    Continue anyway? [y/N] " confirm
+  if [[ "$confirm" != [yY] ]]; then
+    echo "Aborted."
+    exit 0
+  fi
 fi
 
-# Install the agent directly from GitHub — no local checkout required.
-# uv downloads Python 3.12, builds an isolated venv, and places the
-# binary at /usr/local/bin/weave.
-UV_TOOL_BIN_DIR=/usr/local/bin uv tool install --python 3.12 \
-  "git+https://github.com/danohn/weave#subdirectory=agent"
+# ── Install ───────────────────────────────────────────────────────────────────
+log ""
+log "Weave Agent Installer"
+log "────────────────────────────────────────"
+info "Node:       $NODE_NAME"
+info "Controller: $CONTROLLER_URL"
+info "Interface:  $INTERFACE  (port $ENDPOINT_PORT)"
+log ""
 
-# Create config directory
+step "Installing system dependencies (wireguard-tools, git)..."
+apt-get update -y        >> "$LOG_FILE" 2>&1
+apt-get install -y wireguard-tools git >> "$LOG_FILE" 2>&1
+
+export PATH="$HOME/.local/bin:$PATH"
+
+step "Installing uv..."
+if command -v uv &>/dev/null; then
+  info "uv already installed — skipping"
+else
+  curl -fsSL https://astral.sh/uv/install.sh 2>>"$LOG_FILE" | sh >> "$LOG_FILE" 2>&1
+fi
+
+step "Installing weave agent from GitHub..."
+UV_TOOL_BIN_DIR=/usr/local/bin uv tool install --python 3.12 \
+  "git+https://github.com/danohn/weave#subdirectory=agent" >> "$LOG_FILE" 2>&1
+
+step "Writing configuration..."
 mkdir -p /etc/weave
 chmod 700 /etc/weave
 
-# Write env file
-cat > /etc/weave/agent.env <<EOF
-CONTROLLER_URL=${CONTROLLER_URL}
-NODE_NAME=${NODE_NAME}
-ENDPOINT_PORT=${ENDPOINT_PORT}
-INTERFACE=${INTERFACE}
-HEARTBEAT_INTERVAL=${HEARTBEAT_INTERVAL}
-PEER_POLL_INTERVAL=${PEER_POLL_INTERVAL}
-EOF
-if [[ -n "$PREAUTH_TOKEN" ]]; then
-  echo "PREAUTH_TOKEN=${PREAUTH_TOKEN}" >> /etc/weave/agent.env
-fi
+# Use printf to write each value — avoids shell expansion of special characters
+# in URLs or tokens that would corrupt the file with an unquoted heredoc.
+{
+  printf 'CONTROLLER_URL=%s\n'      "$CONTROLLER_URL"
+  printf 'NODE_NAME=%s\n'           "$NODE_NAME"
+  printf 'ENDPOINT_PORT=%s\n'       "$ENDPOINT_PORT"
+  printf 'INTERFACE=%s\n'           "$INTERFACE"
+  printf 'HEARTBEAT_INTERVAL=%s\n'  "$HEARTBEAT_INTERVAL"
+  printf 'PEER_POLL_INTERVAL=%s\n'  "$PEER_POLL_INTERVAL"
+  [[ -n "$PREAUTH_TOKEN" ]] && printf 'PREAUTH_TOKEN=%s\n' "$PREAUTH_TOKEN"
+} > /etc/weave/agent.env
 chmod 600 /etc/weave/agent.env
 
-# Write the systemd service unit inline — no local file needed
+step "Installing systemd service..."
 cat > /etc/systemd/system/weave.service <<'UNIT'
 [Unit]
 Description=Weave Agent
@@ -119,9 +166,41 @@ User=root
 WantedBy=multi-user.target
 UNIT
 
-systemctl daemon-reload
-systemctl enable --now weave
+systemctl daemon-reload       >> "$LOG_FILE" 2>&1
+systemctl enable --now weave  >> "$LOG_FILE" 2>&1
 
-echo ""
-echo "Installed and started. Follow logs with:"
-echo "  journalctl -fu weave"
+step "Waiting for agent to register with controller..."
+STATE_FILE="/etc/weave/state.json"
+NODE_ID=""
+VPN_IP=""
+for i in $(seq 1 30); do
+  if [[ -f "$STATE_FILE" ]]; then
+    NODE_ID=$(python3 -c "import json; d=json.load(open('$STATE_FILE')); print(d['node_id'])" 2>/dev/null || true)
+    VPN_IP=$(python3  -c "import json; d=json.load(open('$STATE_FILE')); print(d['vpn_ip'])"  2>/dev/null || true)
+    break
+  fi
+  sleep 1
+done
+
+log ""
+log "────────────────────────────────────────"
+if [[ -n "$NODE_ID" ]]; then
+  log "  Weave agent installed and registered."
+  log ""
+  log "  Node ID:  $NODE_ID"
+  log "  VPN IP:   $VPN_IP"
+else
+  log "  Weave agent installed and started."
+  log "  (Node not yet registered — may need controller activation)"
+fi
+log ""
+log "  Follow logs:  journalctl -fu weave"
+log "  Full install log: $LOG_FILE"
+log ""
+
+# Machine-readable status line — easy to grep across cloud-init logs
+if [[ -n "$NODE_ID" ]]; then
+  echo "WEAVE_INSTALL=success node=${NODE_NAME} node_id=${NODE_ID} vpn_ip=${VPN_IP}"
+else
+  echo "WEAVE_INSTALL=success node=${NODE_NAME} node_id=pending vpn_ip=pending"
+fi

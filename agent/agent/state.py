@@ -22,5 +22,9 @@ def load(path: str) -> NodeState | None:
 def save(path: str, state: NodeState) -> None:
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(asdict(state), indent=2))
-    os.chmod(path, 0o600)
+    # Write to a temp file then rename — atomic on POSIX, so a crash
+    # mid-write never leaves a partial/corrupt state.json.
+    tmp = p.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(asdict(state), indent=2))
+    os.chmod(tmp, 0o600)
+    tmp.rename(p)

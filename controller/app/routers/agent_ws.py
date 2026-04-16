@@ -14,14 +14,18 @@ router = APIRouter()
 
 
 @router.websocket("/api/v1/nodes/{node_id}/ws")
-async def agent_ws(websocket: WebSocket, node_id: str, token: str) -> None:
+async def agent_ws(websocket: WebSocket, node_id: str) -> None:
     """
     Persistent WebSocket connection for edge node agents.
 
     Agents connect here to receive real-time peer list updates instead of
     polling GET /peers.  Authentication uses the node bearer token passed
-    as a query parameter (?token=...).
+    in the Authorization header (Bearer <token>) to avoid it appearing in
+    proxy access logs.
     """
+    auth_header = websocket.headers.get("authorization", "")
+    token = auth_header.removeprefix("Bearer ").strip()
+
     async with AsyncSessionLocal() as session:
         # Validate token and node ownership
         result = await session.execute(

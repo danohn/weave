@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import AsyncGenerator
 
 import httpx
 import websockets
@@ -30,6 +29,11 @@ class Peer:
 class ControllerClient:
     def __init__(self, base_url: str) -> None:
         self._base = base_url.rstrip("/")
+        # Persistent client — shares connection pool and TLS sessions across calls
+        self._client = httpx.AsyncClient(timeout=10)
+
+    async def aclose(self) -> None:
+        await self._client.aclose()
 
     async def register(
         self,
@@ -45,51 +49,51 @@ class ControllerClient:
         }
         if preauth_token is not None:
             payload["preauth_token"] = preauth_token
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(
-                f"{self._base}/api/v1/nodes/register",
-                json=payload,
-                timeout=10,
-            )
-            resp.raise_for_status()
-            return RegisterResponse(**resp.json())
+        resp = await self._client.post(
+            f"{self._base}/api/v1/nodes/register",
+            json=payload,
+        )
+        resp.raise_for_status()
+        return RegisterResponse(**resp.json())
 
     async def heartbeat(self, node_id: str, token: str) -> HeartbeatResponse:
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(
-                f"{self._base}/api/v1/nodes/{node_id}/heartbeat",
-                headers={"Authorization": f"Bearer {token}"},
-                timeout=10,
-            )
-            resp.raise_for_status()
-            return HeartbeatResponse(**resp.json())
+        resp = await self._client.post(
+            f"{self._base}/api/v1/nodes/{node_id}/heartbeat",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        resp.raise_for_status()
+        return HeartbeatResponse(**resp.json())
 
     async def go_offline(self, node_id: str, token: str) -> None:
         """Notify the controller that this node is shutting down cleanly."""
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(
-                f"{self._base}/api/v1/nodes/{node_id}/offline",
-                headers={"Authorization": f"Bearer {token}"},
-                timeout=5,
-            )
-            resp.raise_for_status()
+        resp = await self._client.post(
+            f"{self._base}/api/v1/nodes/{node_id}/offline",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=5,
+        )
+        resp.raise_for_status()
 
     def peer_websocket(self, node_id: str, token: str):
-        """Return a websockets connection context manager for the peer update stream."""
+        """Return a websockets connection context manager for the peer update stream.
+
+        The auth token is sent as a header rather than a query parameter to
+        avoid it appearing in proxy access logs.
+        """
         ws_url = (
             self._base
             .replace("https://", "wss://")
             .replace("http://", "ws://")
         )
-        ws_url += f"/api/v1/nodes/{node_id}/ws?token={token}"
-        return websockets.connect(ws_url)
+        ws_url += f"/api/v1/nodes/{node_id}/ws"
+        return websockets.connect(
+            ws_url,
+            additional_headers={"Authorization": f"Bearer {token}"},
+        )
 
     async def get_peers(self, node_id: str, token: str) -> list[Peer]:
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                f"{self._base}/api/v1/nodes/{node_id}/peers",
-                headers={"Authorization": f"Bearer {token}"},
-                timeout=10,
-            )
-            resp.raise_for_status()
-            return [Peer(**p) for p in resp.json()]
+        resp = await self._client.get(
+            f"{self._base}/api/v1/nodes/{node_id}/peers",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        resp.raise_for_status()
+        return [Peer(**p) for p in resp.json()]

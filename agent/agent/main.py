@@ -140,8 +140,19 @@ async def run() -> None:
     # Block until an admin activates the node
     await wait_until_active(client, node)
 
-    # Bring up the interface and load the initial peer list
-    peers = await client.get_peers(node.node_id, node.auth_token)
+    # Bring up the interface and load the initial peer list (with retry)
+    peers: list = []
+    for attempt in range(1, 11):
+        try:
+            peers = await client.get_peers(node.node_id, node.auth_token)
+            break
+        except Exception as exc:
+            if attempt == 10:
+                raise
+            logger.warning(
+                "Failed to fetch initial peer list (attempt %d/10): %s — retrying in 5s", attempt, exc
+            )
+            await asyncio.sleep(5)
     wg.setup_interface(
         interface=settings.INTERFACE,
         vpn_ip=node.vpn_ip,
@@ -179,6 +190,7 @@ async def run() -> None:
         _shutdown_watcher(),
         return_exceptions=True,
     )
+    await client.aclose()
 
 
 def main() -> None:
