@@ -87,6 +87,9 @@ async def peer_loop(
                 logger.info("Connected to peer update stream")
                 async for message in ws:
                     data = json.loads(message)
+                    if data.get("type") == "ping":
+                        await ws.send(json.dumps({"type": "pong"}))
+                        continue
                     peers = [Peer(**p) for p in data["peers"]]
                     apply(peers)
 

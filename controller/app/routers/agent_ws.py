@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -14,6 +15,9 @@ from app.services import node_service
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+PING_INTERVAL = 10  # seconds between keepalive pings
+PING_TIMEOUT  = 10  # seconds to wait for a pong before declaring the agent dead
 
 
 @router.websocket("/api/v1/nodes/{node_id}/ws")
@@ -45,9 +49,21 @@ async def agent_ws(websocket: WebSocket, node_id: str) -> None:
             # Push current peer list immediately on connect
             await agent_manager.send_peers(node_id, session)
 
-            # Hold the connection open; agents may send pings as keepalives
+            # Keepalive loop: ping the agent every PING_INTERVAL seconds.
+            # TCP alone won't detect a dead connection when a cable is unplugged
+            # (no RST is sent). By waiting for a pong with a timeout we detect
+            # it within PING_INTERVAL + PING_TIMEOUT seconds.
             while True:
-                await websocket.receive_text()
+                await asyncio.sleep(PING_INTERVAL)
+                try:
+                    await websocket.send_json({"type": "ping"})
+                except Exception:
+                    break  # send failed — connection already gone
+                try:
+                    await asyncio.wait_for(websocket.receive_text(), timeout=PING_TIMEOUT)
+                except asyncio.TimeoutError:
+                    logger.info("Agent %s ping timeout — declaring offline", node_id)
+                    break
 
         except WebSocketDisconnect:
             pass
