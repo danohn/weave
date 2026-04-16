@@ -55,11 +55,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="SD-WAN Controller",
-    description=(
-        "WireGuard-based SD-WAN control plane — analogous to Cisco Viptela's "
-        "vBond (orchestration) and vSmart (policy/peer distribution) components."
-    ),
+    title="Weave",
+    description="WireGuard-based SD-WAN control plane.",
     version="0.1.0",
     lifespan=lifespan,
 )

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SD-WAN Dashboard</title>
+  <title>Weave</title>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
@@ -11,20 +11,8 @@
 <!-- ── Header ────────────────────────────────────────────────────────── -->
 <header>
   <div class="logo">
-    <div class="logo-mark">
-      <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-        <circle cx="6" cy="6" r="2" fill="white"/>
-        <circle cx="1.5" cy="1.5" r="1.5" fill="white" opacity=".5"/>
-        <circle cx="10.5" cy="1.5" r="1.5" fill="white" opacity=".5"/>
-        <circle cx="1.5" cy="10.5" r="1.5" fill="white" opacity=".5"/>
-        <circle cx="10.5" cy="10.5" r="1.5" fill="white" opacity=".5"/>
-        <line x1="6" y1="4" x2="2.5" y2="2.5" stroke="white" stroke-width="1" opacity=".4"/>
-        <line x1="6" y1="4" x2="9.5" y2="2.5" stroke="white" stroke-width="1" opacity=".4"/>
-        <line x1="6" y1="8" x2="2.5" y2="9.5" stroke="white" stroke-width="1" opacity=".4"/>
-        <line x1="6" y1="8" x2="9.5" y2="9.5" stroke="white" stroke-width="1" opacity=".4"/>
-      </svg>
-    </div>
-    SD-WAN
+    <img src="/static/logo.svg" width="20" height="20" alt="Weave">
+    Weave
   </div>
 
   <div class="header-right">
@@ -32,18 +20,6 @@
       <div class="health-dot" id="hdot"></div>
       <span id="hlabel">Disconnected</span>
     </div>
-
-    <div class="toggle-row" id="ar-toggle" title="Auto-refresh every 30s">
-      <div class="pill on" id="ar-pill"></div>
-      Auto
-    </div>
-
-    <button class="icon-btn" id="refresh-btn" title="Refresh now">
-      <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
-        <path d="M13.5 8A5.5 5.5 0 1 1 8 2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-        <path d="M8 2.5 L11 5.5 L8 8.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-      </svg>
-    </button>
   </div>
 </header>
 
@@ -69,7 +45,7 @@
       <div class="stat-label">Total</div>
       <div class="stat-num" id="s-total">—</div>
     </div>
-    <div class="stat-card">
+    <div class="stat-card live">
       <div class="stat-label">Active</div>
       <div class="stat-num" id="s-active">—</div>
     </div>

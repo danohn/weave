@@ -5,8 +5,6 @@ const state = {
   nodes: [],
   tokens: [],
   connected: false,
-  autoRefresh: true,
-  timer: null,
   lastUpdated: null,
 };
 
@@ -16,9 +14,6 @@ const get = id => document.getElementById(id);
 const inpUrl       = get('inp-url');
 const inpToken     = get('inp-token');
 const connectBtn   = get('connect-btn');
-const refreshBtn   = get('refresh-btn');
-const arPill       = get('ar-pill');
-const arToggle     = get('ar-toggle');
 const hdot         = get('hdot');
 const hlabel       = get('hlabel');
 const tbody        = get('tbody');
@@ -41,8 +36,8 @@ const tokenCreateBtn = get('token-create');
 
 // ── Persistence ────────────────────────────────────────────────────────────
 (function loadConfig() {
-  const savedUrl   = localStorage.getItem('sdwan_url')   || '';
-  const savedToken = localStorage.getItem('sdwan_token') || '';
+  const savedUrl   = localStorage.getItem('weave_url')   || '';
+  const savedToken = localStorage.getItem('weave_token') || '';
   inpUrl.value   = savedUrl   || (location.hostname !== '' ? location.origin : '');
   inpToken.value = savedToken || '';
   if (savedUrl && savedToken) {
@@ -52,8 +47,8 @@ const tokenCreateBtn = get('token-create');
 })();
 
 function saveConfig() {
-  localStorage.setItem('sdwan_url',   state.url);
-  localStorage.setItem('sdwan_token', state.token);
+  localStorage.setItem('weave_url',   state.url);
+  localStorage.setItem('weave_token', state.token);
 }
 
 // ── API helpers ────────────────────────────────────────────────────────────
@@ -110,15 +105,10 @@ function openWebSocket() {
   ws.onclose = ev => {
     ws = null;
     if (ev.code === 4001) {
-      // Bad token — don't reconnect
       setHealth(false, 'Unauthorized');
       return;
     }
     setHealth(false, 'Reconnecting…');
-    // Fall back to polling while disconnected
-    if (state.autoRefresh && !state.timer) {
-      state.timer = setInterval(refresh, 30_000);
-    }
     wsReconnectTimer = setTimeout(openWebSocket, 5_000);
   };
 }
@@ -149,7 +139,6 @@ function applyState(nodes, tokens) {
 // ── HTTP refresh (used on connect and as WS fallback) ──────────────────────
 async function refresh() {
   if (!state.url || !state.token) return;
-  refreshBtn.classList.add('spinning');
   try {
     const [health, nodes, tokens] = await Promise.all([fetchHealth(), fetchNodes(), fetchTokens()]);
     applyState(nodes, tokens);
@@ -159,19 +148,7 @@ async function refresh() {
     newTokenBtn.disabled = true;
     setHealth(false, 'Error');
     toast(err.message, 'err');
-  } finally {
-    refreshBtn.classList.remove('spinning');
   }
-}
-
-function setAutoRefresh(on) {
-  state.autoRefresh = on;
-  arPill.classList.toggle('on', on);
-  // Only run polling timer when WS is not connected
-  clearInterval(state.timer);
-  state.timer = null;
-  const wsLive = ws && ws.readyState === WebSocket.OPEN;
-  if (on && !wsLive) state.timer = setInterval(refresh, 30_000);
 }
 
 // ── Rendering ──────────────────────────────────────────────────────────────
@@ -420,11 +397,7 @@ connectBtn.addEventListener('click', () => {
 inpUrl.addEventListener('keydown',   ev => ev.key === 'Enter' && connectBtn.click());
 inpToken.addEventListener('keydown', ev => ev.key === 'Enter' && connectBtn.click());
 
-refreshBtn.addEventListener('click', refresh);
-arToggle.addEventListener('click', () => setAutoRefresh(!state.autoRefresh));
-
 // ── Boot ───────────────────────────────────────────────────────────────────
-setAutoRefresh(true);
 if (state.url && state.token) {
   refresh().then(() => openWebSocket());
 }
