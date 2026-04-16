@@ -1,6 +1,10 @@
 #!/bin/bash
 # Install the Weave agent on a Debian/Ubuntu host.
-# Must be run as root from the repo directory.
+# Designed to be run directly via curl — no local repo checkout required:
+#
+#   curl -fsSL https://raw.githubusercontent.com/danohn/weave/refs/heads/main/agent/install.sh \
+#     | bash -s -- --controller-url URL --endpoint-ip IP [OPTIONS]
+#
 set -euo pipefail
 
 usage() {
@@ -62,13 +66,15 @@ apt-get install -y wireguard-tools
 
 # Install uv if not present
 if ! command -v uv &>/dev/null; then
-  curl -Ls https://astral.sh/uv/install.sh | sh
+  curl -fsSL https://astral.sh/uv/install.sh | sh
   export PATH="$HOME/.local/bin:$PATH"
 fi
 
-# Install the agent — downloads Python 3.12, creates isolated venv,
-# places binary at /usr/local/bin/weave
-UV_TOOL_BIN_DIR=/usr/local/bin uv tool install --python 3.12 .
+# Install the agent directly from GitHub — no local checkout required.
+# uv downloads Python 3.12, builds an isolated venv, and places the
+# binary at /usr/local/bin/weave.
+UV_TOOL_BIN_DIR=/usr/local/bin uv tool install --python 3.12 \
+  "git+https://github.com/danohn/weave#subdirectory=agent"
 
 # Create config directory
 mkdir -p /etc/weave
@@ -89,8 +95,32 @@ if [[ -n "$PREAUTH_TOKEN" ]]; then
 fi
 chmod 600 /etc/weave/agent.env
 
-# Install and enable systemd service
-cp weave.service /etc/systemd/system/
+# Write the systemd service unit inline — no local file needed
+cat > /etc/systemd/system/weave.service <<'UNIT'
+[Unit]
+Description=Weave Agent
+Documentation=https://github.com/danohn/weave
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/weave/agent.env
+ExecStart=/usr/local/bin/weave
+Restart=on-failure
+RestartSec=10
+ExecStartPre=/bin/sleep 2
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=weave
+
+User=root
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
 systemctl daemon-reload
 systemctl enable --now weave
 

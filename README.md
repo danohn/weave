@@ -59,15 +59,15 @@ uv run pytest -v
 ## Installing an edge node
 
 ```bash
-cd agent
-sudo ./install.sh \
-  --controller-url http://<controller-host>:8005 \
-  --endpoint-ip <this-node-public-ip> \
-  --node-name <name> \
-  --preauth-token <token>
+curl -fsSL https://raw.githubusercontent.com/danohn/weave/refs/heads/main/agent/install.sh \
+  | bash -s -- \
+      --controller-url http://<controller-host>:8005 \
+      --endpoint-ip <this-node-public-ip> \
+      --node-name <name> \
+      --preauth-token <token>
 ```
 
-Generate a pre-auth token first via the dashboard or the API (see below). The agent registers, auto-activates using the token, brings up WireGuard, and runs as a systemd service.
+Generate a pre-auth token first via the dashboard or the API (see below). The agent registers, auto-activates using the token, brings up WireGuard, and runs as a systemd service. No local repo checkout is required — the script installs the agent directly from GitHub.
 
 Useful commands on an edge node:
 
