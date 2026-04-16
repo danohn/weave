@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import require_admin
+from app.core.websocket import broadcast_state
 from app.db.base import get_session
 from app.schemas.auth import PreAuthTokenCreateRequest, PreAuthTokenResponse
 from app.services import auth_service
@@ -16,6 +17,7 @@ async def create_token(
     _: None = Depends(require_admin),
 ) -> PreAuthTokenResponse:
     token = await auth_service.create_token(data.label, session)
+    await broadcast_state(session)
     return PreAuthTokenResponse.model_validate(token)
 
 
@@ -35,3 +37,4 @@ async def delete_token(
     _: None = Depends(require_admin),
 ) -> None:
     await auth_service.delete_token(token_id, session)
+    await broadcast_state(session)

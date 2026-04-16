@@ -84,22 +84,76 @@ const deleteNode   = id      => api(`/api/v1/nodes/${id}`,          { method: 'D
 const createToken  = label   => api('/api/v1/auth/tokens', { method: 'POST', body: JSON.stringify({ label }) });
 const deleteToken  = id      => api(`/api/v1/auth/tokens/${id}`,    { method: 'DELETE' });
 
-// ── Refresh ────────────────────────────────────────────────────────────────
+// ── WebSocket ──────────────────────────────────────────────────────────────
+let ws = null;
+let wsReconnectTimer = null;
+
+function openWebSocket() {
+  if (!state.url || !state.token) return;
+  if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
+
+  const wsUrl = state.url.replace(/^http/, 'ws') + `/ws?token=${encodeURIComponent(state.token)}`;
+  ws = new WebSocket(wsUrl);
+
+  ws.onopen = () => {
+    clearTimeout(wsReconnectTimer);
+    // WS is live — stop polling to avoid redundant fetches
+    clearInterval(state.timer);
+    state.timer = null;
+  };
+
+  ws.onmessage = ev => {
+    const data = JSON.parse(ev.data);
+    applyState(data.nodes, data.tokens);
+  };
+
+  ws.onclose = ev => {
+    ws = null;
+    if (ev.code === 4001) {
+      // Bad token — don't reconnect
+      setHealth(false, 'Unauthorized');
+      return;
+    }
+    setHealth(false, 'Reconnecting…');
+    // Fall back to polling while disconnected
+    if (state.autoRefresh && !state.timer) {
+      state.timer = setInterval(refresh, 30_000);
+    }
+    wsReconnectTimer = setTimeout(openWebSocket, 5_000);
+  };
+}
+
+function closeWebSocket() {
+  clearTimeout(wsReconnectTimer);
+  if (ws) {
+    ws.onclose = null; // suppress reconnect logic on intentional close
+    ws.close();
+    ws = null;
+  }
+}
+
+// ── Apply state from WS message or HTTP fetch ──────────────────────────────
+function applyState(nodes, tokens) {
+  state.nodes       = nodes;
+  state.tokens      = tokens;
+  state.connected   = true;
+  state.lastUpdated = new Date();
+  setHealth(true, `${nodes.length} node${nodes.length !== 1 ? 's' : ''}`);
+  newTokenBtn.disabled = false;
+  renderStats();
+  renderNodes();
+  renderTokens();
+  renderTimestamp();
+}
+
+// ── HTTP refresh (used on connect and as WS fallback) ──────────────────────
 async function refresh() {
   if (!state.url || !state.token) return;
   refreshBtn.classList.add('spinning');
   try {
     const [health, nodes, tokens] = await Promise.all([fetchHealth(), fetchNodes(), fetchTokens()]);
-    state.connected   = true;
-    state.nodes       = nodes;
-    state.tokens      = tokens;
-    state.lastUpdated = new Date();
+    applyState(nodes, tokens);
     setHealth(true, `${health.node_count} node${health.node_count !== 1 ? 's' : ''}`);
-    newTokenBtn.disabled = false;
-    renderStats();
-    renderNodes();
-    renderTokens();
-    renderTimestamp();
   } catch (err) {
     state.connected = false;
     newTokenBtn.disabled = true;
@@ -112,10 +166,12 @@ async function refresh() {
 
 function setAutoRefresh(on) {
   state.autoRefresh = on;
+  arPill.classList.toggle('on', on);
+  // Only run polling timer when WS is not connected
   clearInterval(state.timer);
   state.timer = null;
-  arPill.classList.toggle('on', on);
-  if (on) state.timer = setInterval(refresh, 30_000);
+  const wsLive = ws && ws.readyState === WebSocket.OPEN;
+  if (on && !wsLive) state.timer = setInterval(refresh, 30_000);
 }
 
 // ── Rendering ──────────────────────────────────────────────────────────────
@@ -257,7 +313,7 @@ function doActivate(id, name) {
     'Activate node',
     `Activate <strong>${e(name)}</strong>? It will join the mesh and become visible to all peers.`,
     async () => {
-      try { await activateNode(id); toast(`${name} activated`); await refresh(); }
+      try { await activateNode(id); toast(`${name} activated`); }
       catch (err) { toast(err.message, 'err'); }
     }
   );
@@ -268,7 +324,7 @@ function doRevoke(id, name) {
     'Revoke node',
     `Revoke <strong>${e(name)}</strong>? It will be excluded from all peer lists. This cannot be undone.`,
     async () => {
-      try { await revokeNode(id); toast(`${name} revoked`); await refresh(); }
+      try { await revokeNode(id); toast(`${name} revoked`); }
       catch (err) { toast(err.message, 'err'); }
     }
   );
@@ -279,7 +335,7 @@ function doDelete(id, name) {
     'Delete node',
     `Permanently delete <strong>${e(name)}</strong>? The record will be removed and its VPN IP freed for reuse.`,
     async () => {
-      try { await deleteNode(id); toast(`${name} deleted`); await refresh(); }
+      try { await deleteNode(id); toast(`${name} deleted`); }
       catch (err) { toast(err.message, 'err'); }
     }
   );
@@ -291,7 +347,7 @@ function doDeleteToken(id, label) {
     'Delete token',
     `Delete token <strong>${e(label)}</strong>? It will no longer be valid for registration.`,
     async () => {
-      try { await deleteToken(id); toast(`Token "${label}" deleted`); await refresh(); }
+      try { await deleteToken(id); toast(`Token "${label}" deleted`); }
       catch (err) { toast(err.message, 'err'); }
     }
   );
@@ -332,7 +388,6 @@ tokenCreateBtn.addEventListener('click', async () => {
     await createToken(label);
     tokenOverlay.classList.remove('open');
     toast(`Token "${label}" created`);
-    await refresh();
   } catch (err) {
     toast(err.message, 'err');
   } finally {
@@ -358,7 +413,8 @@ connectBtn.addEventListener('click', () => {
   state.url   = url;
   state.token = token;
   saveConfig();
-  refresh();
+  closeWebSocket();
+  refresh().then(() => openWebSocket());
 });
 
 inpUrl.addEventListener('keydown',   ev => ev.key === 'Enter' && connectBtn.click());
@@ -369,10 +425,13 @@ arToggle.addEventListener('click', () => setAutoRefresh(!state.autoRefresh));
 
 // ── Boot ───────────────────────────────────────────────────────────────────
 setAutoRefresh(true);
-if (state.url && state.token) refresh();
+if (state.url && state.token) {
+  refresh().then(() => openWebSocket());
+}
 
-// Tick relative timestamps every 10s without a full API call
+// Tick relative timestamps every 10s without any network call
 setInterval(() => {
-  if (state.nodes.length)  { renderNodes(); renderTimestamp(); }
-  if (state.tokens.length) { renderTokens(); }
+  if (state.nodes.length)  renderNodes();
+  if (state.tokens.length) renderTokens();
+  if (state.lastUpdated)   renderTimestamp();
 }, 10_000);
