@@ -12,6 +12,9 @@ dependencies = [
 [project.scripts]
 sdwan-agent = "agent.main:main"
 
+[tool.hatch.build.targets.wheel]
+packages = ["agent"]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
