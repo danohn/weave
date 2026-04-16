@@ -1,6 +1,6 @@
 # Weave
 
-A WireGuard-based SD-WAN control plane inspired by Cisco Viptela. The controller acts as a combined vBond (orchestration, NAT traversal) and vSmart (peer distribution). Edge nodes run a lightweight agent that manages WireGuard automatically.
+A WireGuard-based SD-WAN control plane. The controller handles orchestration, NAT traversal, and peer distribution. Edge nodes run a lightweight agent that manages WireGuard automatically.
 
 ## Repository structure
 
