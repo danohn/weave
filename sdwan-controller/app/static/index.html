@@ -848,7 +848,7 @@ function confirm(title, desc, cb) {
 
 function closeModal() { overlay.classList.remove('open'); _cb = null; }
 
-mOk.addEventListener('click', async () => { closeModal(); if (_cb) await _cb(); });
+mOk.addEventListener('click', async () => { const cb = _cb; closeModal(); if (cb) await cb(); });
 mCancel.addEventListener('click', closeModal);
 overlay.addEventListener('click', ev => { if (ev.target === overlay) closeModal(); });
 
