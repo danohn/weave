@@ -12,6 +12,7 @@ class NodeRegisterRequest(BaseModel):
     endpoint_ip: str
     endpoint_port: int
     # vpn_ip is auto-assigned by the controller from VPN_SUBNET
+    preauth_token: Optional[str] = None
 
 
 class NodeRegisterResponse(BaseModel):

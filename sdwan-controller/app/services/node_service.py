@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.security import generate_token
-from app.db.models import Node, NodeStatus
+from app.db.models import Node, NodeStatus, PreAuthToken
 from app.schemas.node import NodeRegisterRequest
 
 
@@ -43,9 +43,22 @@ async def register_node(
             status_code=409, detail="WireGuard public key already registered"
         )
 
+    # Pre-auth token validation
+    preauth_row: PreAuthToken | None = None
+    if data.preauth_token:
+        token_result = await session.execute(
+            select(PreAuthToken).where(PreAuthToken.token == data.preauth_token)
+        )
+        preauth_row = token_result.scalar_one_or_none()
+        if not preauth_row or preauth_row.used_at is not None:
+            raise HTTPException(status_code=401, detail="Invalid or already-used pre-auth token")
+    elif settings.REQUIRE_PREAUTH:
+        raise HTTPException(status_code=401, detail="A pre-auth token is required to register")
+
     vpn_ip = await _allocate_vpn_ip(session)
     reflected_ip = request.client.host if request.client else None
     now = datetime.now(timezone.utc)
+    initial_status = NodeStatus.ACTIVE if preauth_row else NodeStatus.PENDING
     node = Node(
         name=data.name,
         wireguard_public_key=data.wireguard_public_key,
@@ -54,10 +67,17 @@ async def register_node(
         vpn_ip=vpn_ip,
         reflected_endpoint_ip=reflected_ip,
         auth_token=generate_token(),
+        status=initial_status,
         last_seen=now,
         created_at=now,
     )
     session.add(node)
+    await session.flush()  # populate node.id before updating the token
+
+    if preauth_row:
+        preauth_row.used_at = now
+        preauth_row.used_by_node_id = node.id
+
     await session.commit()
     await session.refresh(node)
     return node

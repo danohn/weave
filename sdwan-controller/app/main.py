@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.db.base import AsyncSessionLocal, Base, engine, get_session
 from app.db.models import Node
-from app.routers import nodes, peers
+from app.routers import auth, nodes, peers
 from app.services import node_service
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -69,6 +69,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth.router)
 app.include_router(nodes.router)
 app.include_router(peers.router)
 
@@ -76,6 +77,16 @@ app.include_router(peers.router)
 @app.get("/", include_in_schema=False)
 async def dashboard():
     return FileResponse(STATIC_DIR / "index.html")
+
+
+@app.get("/static/style.css", include_in_schema=False)
+async def serve_css():
+    return FileResponse(STATIC_DIR / "style.css", media_type="text/css")
+
+
+@app.get("/static/app.js", include_in_schema=False)
+async def serve_js():
+    return FileResponse(STATIC_DIR / "app.js", media_type="application/javascript")
 
 
 @app.get("/health", tags=["health"])

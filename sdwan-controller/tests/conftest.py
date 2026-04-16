@@ -2,6 +2,7 @@ import os
 
 # Must be set before app modules are imported so pydantic-settings picks it up
 os.environ["ADMIN_TOKEN"] = "test-admin-token"
+os.environ["REQUIRE_PREAUTH"] = "false"  # existing tests register without a token
 
 import pytest
 import pytest_asyncio
@@ -9,6 +10,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
+from app.core.config import settings
 from app.db.base import Base, get_session
 from app.main import app
 
@@ -57,3 +59,25 @@ async def client() -> AsyncClient:
         yield ac
 
     app.dependency_overrides.clear()
+
+
+@pytest_asyncio.fixture
+async def client_require_preauth() -> AsyncClient:
+    """HTTP test client with REQUIRE_PREAUTH forced on."""
+
+    async def override_get_session():
+        async with TestSessionLocal() as session:
+            yield session
+
+    app.dependency_overrides[get_session] = override_get_session
+
+    original = settings.REQUIRE_PREAUTH
+    settings.REQUIRE_PREAUTH = True
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as ac:
+            yield ac
+    finally:
+        settings.REQUIRE_PREAUTH = original
+        app.dependency_overrides.clear()

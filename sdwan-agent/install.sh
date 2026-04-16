@@ -13,6 +13,7 @@ Required:
 
 Optional:
   --node-name NAME        Node name (default: hostname)
+  --preauth-token TOKEN   Pre-auth token for automatic activation
   --endpoint-port PORT    WireGuard listen port (default: 51820)
   --interface IFACE       WireGuard interface name (default: wg0)
   --heartbeat-interval N  Heartbeat interval in seconds (default: 30)
@@ -30,6 +31,7 @@ fi
 CONTROLLER_URL=""
 ENDPOINT_IP=""
 NODE_NAME="$(hostname)"
+PREAUTH_TOKEN=""
 ENDPOINT_PORT="51820"
 INTERFACE="wg0"
 HEARTBEAT_INTERVAL="30"
@@ -41,6 +43,7 @@ while [[ $# -gt 0 ]]; do
     --controller-url)   CONTROLLER_URL="$2";   shift 2 ;;
     --endpoint-ip)      ENDPOINT_IP="$2";      shift 2 ;;
     --node-name)        NODE_NAME="$2";        shift 2 ;;
+    --preauth-token)    PREAUTH_TOKEN="$2";    shift 2 ;;
     --endpoint-port)    ENDPOINT_PORT="$2";    shift 2 ;;
     --interface)        INTERFACE="$2";        shift 2 ;;
     --heartbeat-interval) HEARTBEAT_INTERVAL="$2"; shift 2 ;;
@@ -81,6 +84,9 @@ INTERFACE=${INTERFACE}
 HEARTBEAT_INTERVAL=${HEARTBEAT_INTERVAL}
 PEER_POLL_INTERVAL=${PEER_POLL_INTERVAL}
 EOF
+if [[ -n "$PREAUTH_TOKEN" ]]; then
+  echo "PREAUTH_TOKEN=${PREAUTH_TOKEN}" >> /etc/sdwan-agent/agent.env
+fi
 chmod 600 /etc/sdwan-agent/agent.env
 
 # Install and enable systemd service

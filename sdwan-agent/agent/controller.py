@@ -36,16 +36,20 @@ class ControllerClient:
         wireguard_public_key: str,
         endpoint_ip: str,
         endpoint_port: int,
+        preauth_token: str | None = None,
     ) -> RegisterResponse:
+        payload: dict = {
+            "name": name,
+            "wireguard_public_key": wireguard_public_key,
+            "endpoint_ip": endpoint_ip,
+            "endpoint_port": endpoint_port,
+        }
+        if preauth_token is not None:
+            payload["preauth_token"] = preauth_token
         async with httpx.AsyncClient() as client:
             resp = await client.post(
                 f"{self._base}/api/v1/nodes/register",
-                json={
-                    "name": name,
-                    "wireguard_public_key": wireguard_public_key,
-                    "endpoint_ip": endpoint_ip,
-                    "endpoint_port": endpoint_port,
-                },
+                json=payload,
                 timeout=10,
             )
             resp.raise_for_status()

@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     HEARTBEAT_INTERVAL: int = 30
     PEER_POLL_INTERVAL: int = 60
 
+    PREAUTH_TOKEN: str | None = None
+
     @property
     def wg_config_file(self) -> str:
         return f"/etc/wireguard/{self.INTERFACE}.conf"
