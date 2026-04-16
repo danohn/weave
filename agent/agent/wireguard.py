@@ -80,15 +80,30 @@ def setup_interface(
     logger.info("Interface %s configured (port %d)", interface, listen_port)
 
 
-def sync_peers(interface: str, peers: list[Peer]) -> None:
+def sync_peers(
+    interface: str,
+    peers: list[Peer],
+    private_key_file: str,
+    listen_port: int,
+) -> None:
     """
     Atomically replace the full peer list using `wg syncconf`.
 
     syncconf applies only the diff between the current and desired state,
     so sessions with peers whose configuration has not changed are
     unaffected.
+
+    The [Interface] section must be included in the syncconf file,
+    otherwise syncconf treats the missing section as "empty" and resets
+    the listen-port to a random ephemeral value.
     """
-    lines = []
+    private_key = Path(private_key_file).read_text().strip()
+    lines = [
+        "[Interface]",
+        f"PrivateKey = {private_key}",
+        f"ListenPort = {listen_port}",
+        "",
+    ]
     for peer in peers:
         lines += [
             "[Peer]",

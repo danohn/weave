@@ -62,7 +62,7 @@ async def peer_loop(
 
             if sig != last_sig:
                 logger.info("Peer list changed (%d peer(s)) — syncing", len(peers))
-                wg.sync_peers(settings.INTERFACE, peers)
+                wg.sync_peers(settings.INTERFACE, peers, settings.PRIVATE_KEY_FILE, settings.ENDPOINT_PORT)
                 last_sig = sig
             else:
                 logger.debug("Peer list unchanged (%d peer(s))", len(peers))
@@ -120,7 +120,7 @@ async def run() -> None:
         private_key_file=settings.PRIVATE_KEY_FILE,
         listen_port=settings.ENDPOINT_PORT,
     )
-    wg.sync_peers(settings.INTERFACE, peers)
+    wg.sync_peers(settings.INTERFACE, peers, settings.PRIVATE_KEY_FILE, settings.ENDPOINT_PORT)
 
     logger.info("Interface %s is up — entering main loop", settings.INTERFACE)
 
