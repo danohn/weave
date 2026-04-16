@@ -62,7 +62,9 @@ if [[ -z "$CONTROLLER_URL" || -z "$ENDPOINT_IP" ]]; then
 fi
 
 # wireguard-tools provides the wg binary (used for key generation)
-apt-get install -y wireguard-tools
+# git is required by uv to install the agent directly from GitHub
+apt-get update -y
+apt-get install -y wireguard-tools git
 
 # Install uv if not present
 if ! command -v uv &>/dev/null; then

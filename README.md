@@ -5,7 +5,7 @@ A WireGuard-based SD-WAN control plane. The controller handles orchestration, NA
 ## Repository structure
 
 ```
-sdn/
+weave/
 ├── controller/         # FastAPI control plane
 ├── agent/              # Edge node daemon (Python, systemd)
 ├── frontend/           # Dashboard (HTML/CSS/JS, served by nginx)
@@ -58,21 +58,33 @@ uv run pytest -v
 
 ## Installing an edge node
 
+From the controller host (or anywhere with admin access), generate a pre-auth token for the new node:
+
+```bash
+curl -s -X POST http://<controller-host>:8005/api/v1/auth/tokens \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"label": "sdn-3"}'
+# {"id": "...", "token": "abc123...", ...}
+```
+
+Then on the new node (as root), run:
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/danohn/weave/refs/heads/main/agent/install.sh \
   | bash -s -- \
       --controller-url http://<controller-host>:8005 \
-      --endpoint-ip <this-node-public-ip> \
+      --endpoint-ip <this-node-ip> \
       --node-name <name> \
       --preauth-token <token>
 ```
 
-Generate a pre-auth token first via the dashboard or the API (see below). The agent registers, auto-activates using the token, brings up WireGuard, and runs as a systemd service. No local repo checkout is required — the script installs the agent directly from GitHub.
+The script installs the agent directly from GitHub — no local repo checkout required. The node registers, auto-activates using the token, brings up WireGuard, and starts running as a systemd service.
 
 Useful commands on an edge node:
 
 ```bash
-journalctl -fu weave          # follow logs
+journalctl -fu weave     # follow logs
 systemctl restart weave
 cat /etc/weave/state.json
 wg show wg0
