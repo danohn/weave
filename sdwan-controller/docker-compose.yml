@@ -1,0 +1,15 @@
+services:
+  controller:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - sdwan_db:/app/data
+    environment:
+      DATABASE_URL: "sqlite+aiosqlite:////app/data/sdwan.db"
+      ADMIN_TOKEN: "${ADMIN_TOKEN:-changeme-admin-token}"
+      VPN_SUBNET: "${VPN_SUBNET:-10.0.0.0/24}"
+    restart: unless-stopped
+
+volumes:
+  sdwan_db:
