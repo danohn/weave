@@ -1,0 +1,26 @@
+services:
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "8005:80"
+    volumes:
+      - ./frontend:/usr/share/nginx/html:ro
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - controller
+    restart: unless-stopped
+
+  controller:
+    build: ./controller
+    expose:
+      - "8000"
+    volumes:
+      - weave_db:/app/data
+    environment:
+      DATABASE_URL: "sqlite+aiosqlite:////app/data/weave.db"
+      ADMIN_TOKEN: "${ADMIN_TOKEN:?ADMIN_TOKEN env var must be set}"
+      VPN_SUBNET: "${VPN_SUBNET:-10.0.0.0/24}"
+    restart: unless-stopped
+
+volumes:
+  weave_db:

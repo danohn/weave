@@ -1,23 +1,19 @@
 import asyncio
 import logging
 from contextlib import asynccontextmanager
-from pathlib import Path
 from typing import Any
 
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.websocket import broadcast_state
 from app.db.base import AsyncSessionLocal, Base, engine, get_session
 from app.db.models import Node
-from app.core.websocket import broadcast_state
 from app.routers import auth, nodes, peers, ws
 from app.services import node_service
-
-STATIC_DIR = Path(__file__).parent / "static"
 
 logger = logging.getLogger(__name__)
 
@@ -40,8 +36,6 @@ async def _expiry_loop() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Create tables for development convenience.
-    # In production, run: uv run alembic upgrade head
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
@@ -72,26 +66,6 @@ app.include_router(auth.router)
 app.include_router(nodes.router)
 app.include_router(peers.router)
 app.include_router(ws.router)
-
-
-@app.get("/", include_in_schema=False)
-async def dashboard():
-    return FileResponse(STATIC_DIR / "index.html")
-
-
-@app.get("/static/style.css", include_in_schema=False)
-async def serve_css():
-    return FileResponse(STATIC_DIR / "style.css", media_type="text/css")
-
-
-@app.get("/static/app.js", include_in_schema=False)
-async def serve_js():
-    return FileResponse(STATIC_DIR / "app.js", media_type="application/javascript")
-
-
-@app.get("/static/logo.svg", include_in_schema=False)
-async def serve_logo():
-    return FileResponse(STATIC_DIR / "logo.svg", media_type="image/svg+xml")
 
 
 @app.get("/health", tags=["health"])
