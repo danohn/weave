@@ -8,7 +8,7 @@ class Settings(BaseSettings):
         case_sensitive=True,
     )
 
-    DATABASE_URL: str = "sqlite+aiosqlite:///./sdwan.db"
+    DATABASE_URL: str = "sqlite+aiosqlite:///./weave.db"
     ADMIN_TOKEN: str = "changeme-admin-token"
     VPN_SUBNET: str = "10.0.0.0/24"
     STALE_THRESHOLD_SECONDS: int = 120  # mark OFFLINE after this many seconds

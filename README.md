@@ -41,7 +41,7 @@ All variables are set via environment or a `.env` file in `controller/`.
 | Variable | Default | Description |
 |---|---|---|
 | `ADMIN_TOKEN` | `changeme-admin-token` | Bearer token for all admin endpoints |
-| `DATABASE_URL` | `sqlite+aiosqlite:///./sdwan.db` | SQLAlchemy async DB URL |
+| `DATABASE_URL` | `sqlite+aiosqlite:///./weave.db` | SQLAlchemy async DB URL |
 | `VPN_SUBNET` | `10.0.0.0/24` | Overlay subnet to allocate VPN IPs from |
 | `REQUIRE_PREAUTH` | `true` | Reject registrations that don't supply a valid pre-auth token |
 | `STALE_THRESHOLD_SECONDS` | `120` | Seconds without a heartbeat before a node is marked OFFLINE |
@@ -72,9 +72,9 @@ Generate a pre-auth token first via the dashboard or the API (see below). The ag
 Useful commands on an edge node:
 
 ```bash
-journalctl -fu sdwan-agent    # follow logs
-systemctl restart sdwan-agent
-cat /etc/sdwan-agent/state.json
+journalctl -fu weave          # follow logs
+systemctl restart weave
+cat /etc/weave/state.json
 wg show wg0
 ```
 

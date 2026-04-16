@@ -61,16 +61,8 @@ async def peer_loop(
             sig = wg.peer_signature(peers)
 
             if sig != last_sig:
-                logger.info("Peer list changed (%d peer(s)) — reloading", len(peers))
-                wg.write_config(
-                    config_file=settings.wg_config_file,
-                    vpn_ip=node.vpn_ip,
-                    private_key_file=settings.PRIVATE_KEY_FILE,
-                    listen_port=settings.ENDPOINT_PORT,
-                    peers=peers,
-                )
-                if wg.is_up(settings.INTERFACE):
-                    wg.reload(settings.INTERFACE, settings.wg_config_file)
+                logger.info("Peer list changed (%d peer(s)) — syncing", len(peers))
+                wg.sync_peers(settings.INTERFACE, peers)
                 last_sig = sig
             else:
                 logger.debug("Peer list unchanged (%d peer(s))", len(peers))
@@ -121,19 +113,15 @@ async def run() -> None:
     # Block until an admin activates the node
     await wait_until_active(client, node)
 
-    # Fetch initial peer list and bring up the interface
+    # Bring up the interface and load the initial peer list
     peers = await client.get_peers(node.node_id, node.auth_token)
-    wg.write_config(
-        config_file=settings.wg_config_file,
+    wg.setup_interface(
+        interface=settings.INTERFACE,
         vpn_ip=node.vpn_ip,
         private_key_file=settings.PRIVATE_KEY_FILE,
         listen_port=settings.ENDPOINT_PORT,
-        peers=peers,
     )
-
-    if wg.is_up(settings.INTERFACE):
-        wg.down(settings.INTERFACE)
-    wg.up(settings.INTERFACE)
+    wg.sync_peers(settings.INTERFACE, peers)
 
     logger.info("Interface %s is up — entering main loop", settings.INTERFACE)
 

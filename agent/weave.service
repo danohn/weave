@@ -1,13 +1,13 @@
 [Unit]
-Description=SD-WAN Agent
-Documentation=https://github.com/your-org/sdn
+Description=Weave Agent
+Documentation=https://github.com/danohn/weave
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-EnvironmentFile=/etc/sdwan-agent/agent.env
-ExecStart=/usr/local/bin/sdwan-agent
+EnvironmentFile=/etc/weave/agent.env
+ExecStart=/usr/local/bin/weave
 Restart=on-failure
 RestartSec=10
 # Give the network time to settle on boot
@@ -15,7 +15,7 @@ ExecStartPre=/bin/sleep 2
 
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=sdwan-agent
+SyslogIdentifier=weave
 
 # WireGuard needs root to manage interfaces
 User=root

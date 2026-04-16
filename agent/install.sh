@@ -1,5 +1,5 @@
 #!/bin/bash
-# Install the sdwan-agent on a Debian/Ubuntu host.
+# Install the Weave agent on a Debian/Ubuntu host.
 # Must be run as root from the repo directory.
 set -euo pipefail
 
@@ -57,7 +57,7 @@ if [[ -z "$CONTROLLER_URL" || -z "$ENDPOINT_IP" ]]; then
   usage
 fi
 
-# wireguard-tools provides wg and wg-quick
+# wireguard-tools provides the wg binary (used for key generation)
 apt-get install -y wireguard-tools
 
 # Install uv if not present
@@ -67,15 +67,15 @@ if ! command -v uv &>/dev/null; then
 fi
 
 # Install the agent — downloads Python 3.12, creates isolated venv,
-# places binary at /usr/local/bin/sdwan-agent
+# places binary at /usr/local/bin/weave
 UV_TOOL_BIN_DIR=/usr/local/bin uv tool install --python 3.12 .
 
 # Create config directory
-mkdir -p /etc/sdwan-agent
-chmod 700 /etc/sdwan-agent
+mkdir -p /etc/weave
+chmod 700 /etc/weave
 
 # Write env file
-cat > /etc/sdwan-agent/agent.env <<EOF
+cat > /etc/weave/agent.env <<EOF
 CONTROLLER_URL=${CONTROLLER_URL}
 ENDPOINT_IP=${ENDPOINT_IP}
 NODE_NAME=${NODE_NAME}
@@ -85,15 +85,15 @@ HEARTBEAT_INTERVAL=${HEARTBEAT_INTERVAL}
 PEER_POLL_INTERVAL=${PEER_POLL_INTERVAL}
 EOF
 if [[ -n "$PREAUTH_TOKEN" ]]; then
-  echo "PREAUTH_TOKEN=${PREAUTH_TOKEN}" >> /etc/sdwan-agent/agent.env
+  echo "PREAUTH_TOKEN=${PREAUTH_TOKEN}" >> /etc/weave/agent.env
 fi
-chmod 600 /etc/sdwan-agent/agent.env
+chmod 600 /etc/weave/agent.env
 
 # Install and enable systemd service
-cp sdwan-agent.service /etc/systemd/system/
+cp weave.service /etc/systemd/system/
 systemctl daemon-reload
-systemctl enable --now sdwan-agent
+systemctl enable --now weave
 
 echo ""
 echo "Installed and started. Follow logs with:"
-echo "  journalctl -fu sdwan-agent"
+echo "  journalctl -fu weave"

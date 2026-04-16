@@ -1,7 +1,7 @@
 [project]
-name = "sdwan-agent"
+name = "weave"
 version = "0.1.0"
-description = "SD-WAN edge node agent"
+description = "Weave edge node agent"
 requires-python = ">=3.12"
 dependencies = [
     "httpx>=0.27.0",
@@ -10,7 +10,7 @@ dependencies = [
 ]
 
 [project.scripts]
-sdwan-agent = "agent.main:main"
+weave = "agent.main:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["agent"]

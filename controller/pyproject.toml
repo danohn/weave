@@ -1,7 +1,7 @@
 [project]
-name = "sdwan-controller"
+name = "weave-controller"
 version = "0.1.0"
-description = "SD-WAN Control Plane using WireGuard and FRRouting"
+description = "Weave Control Plane using WireGuard and FRRouting"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
