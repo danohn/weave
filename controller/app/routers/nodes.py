@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.agent_ws import broadcast_peers
 from app.core.security import get_current_node, require_admin
 from app.core.websocket import broadcast_state
 from app.db.base import get_session
@@ -24,6 +25,7 @@ async def register(
 ) -> NodeRegisterResponse:
     node = await node_service.register_node(request, data, session)
     await broadcast_state(session)
+    await broadcast_peers(session)
     return NodeRegisterResponse(
         id=node.id, auth_token=node.auth_token, vpn_ip=node.vpn_ip
     )
@@ -42,6 +44,7 @@ async def heartbeat(
         raise HTTPException(status_code=403, detail="Node is revoked")
     node = await node_service.update_heartbeat(current_node, request, session)
     await broadcast_state(session)
+    await broadcast_peers(session)
     return HeartbeatResponse(status=node.status, last_seen=node.last_seen)
 
 
@@ -53,6 +56,7 @@ async def activate(
 ) -> NodeAdminResponse:
     node = await node_service.activate_node(node_id, session)
     await broadcast_state(session)
+    await broadcast_peers(session)
     return NodeAdminResponse.model_validate(node)
 
 
@@ -64,6 +68,7 @@ async def revoke(
 ) -> NodeAdminResponse:
     node = await node_service.revoke_node(node_id, session)
     await broadcast_state(session)
+    await broadcast_peers(session)
     return NodeAdminResponse.model_validate(node)
 
 
@@ -75,6 +80,7 @@ async def delete(
 ) -> None:
     await node_service.delete_node(node_id, session)
     await broadcast_state(session)
+    await broadcast_peers(session)
 
 
 @router.get("/", response_model=list[NodeAdminResponse])

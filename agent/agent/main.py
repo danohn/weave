@@ -1,10 +1,11 @@
 import asyncio
+import json
 import logging
 import sys
 
 from agent import wireguard as wg
 from agent.config import Settings
-from agent.controller import ControllerClient
+from agent.controller import ControllerClient, Peer
 from agent.state import NodeState
 from agent import state as state_store
 
@@ -53,22 +54,43 @@ async def peer_loop(
     node: NodeState,
     settings: Settings,
 ) -> None:
+    """
+    Maintain an up-to-date peer list via a persistent WebSocket connection.
+
+    The controller pushes a new peer list whenever topology changes (node
+    joins, leaves, goes offline, etc.).  If the WebSocket drops, we fall
+    back to a single HTTP poll and then retry the connection after
+    PEER_POLL_INTERVAL seconds.
+    """
     last_sig: frozenset = frozenset()
+
+    def apply(peers: list) -> None:
+        nonlocal last_sig
+        sig = wg.peer_signature(peers)
+        if sig != last_sig:
+            logger.info("Peer list changed (%d peer(s)) — syncing", len(peers))
+            wg.sync_peers(
+                settings.INTERFACE, peers,
+                settings.PRIVATE_KEY_FILE, settings.ENDPOINT_PORT,
+            )
+            last_sig = sig
 
     while True:
         try:
-            peers = await client.get_peers(node.node_id, node.auth_token)
-            sig = wg.peer_signature(peers)
-
-            if sig != last_sig:
-                logger.info("Peer list changed (%d peer(s)) — syncing", len(peers))
-                wg.sync_peers(settings.INTERFACE, peers, settings.PRIVATE_KEY_FILE, settings.ENDPOINT_PORT)
-                last_sig = sig
-            else:
-                logger.debug("Peer list unchanged (%d peer(s))", len(peers))
+            async with client.peer_websocket(node.node_id, node.auth_token) as ws:
+                logger.info("Connected to peer update stream")
+                async for message in ws:
+                    data = json.loads(message)
+                    peers = [Peer(**p) for p in data["peers"]]
+                    apply(peers)
 
         except Exception as exc:
-            logger.warning("Peer poll failed: %s", exc)
+            logger.warning("Peer stream disconnected: %s — falling back to poll", exc)
+            try:
+                peers = await client.get_peers(node.node_id, node.auth_token)
+                apply(peers)
+            except Exception as poll_exc:
+                logger.warning("Peer poll failed: %s", poll_exc)
 
         await asyncio.sleep(settings.PEER_POLL_INTERVAL)
 

@@ -9,10 +9,11 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.agent_ws import broadcast_peers
 from app.core.websocket import broadcast_state
 from app.db.base import AsyncSessionLocal, Base, engine, get_session
 from app.db.models import Node
-from app.routers import auth, nodes, peers, ws
+from app.routers import agent_ws, auth, nodes, peers, ws
 from app.services import node_service
 
 logger = logging.getLogger(__name__)
@@ -30,6 +31,7 @@ async def _expiry_loop() -> None:
                 if count:
                     logger.info("Marked %d node(s) OFFLINE (no heartbeat)", count)
                     await broadcast_state(session)
+                    await broadcast_peers(session)
         except Exception:
             logger.exception("Error in expiry loop")
 
@@ -62,6 +64,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(agent_ws.router)
 app.include_router(auth.router)
 app.include_router(nodes.router)
 app.include_router(peers.router)

@@ -1,6 +1,8 @@
 from dataclasses import dataclass
+from typing import AsyncGenerator
 
 import httpx
+import websockets
 
 
 @dataclass
@@ -61,6 +63,16 @@ class ControllerClient:
             )
             resp.raise_for_status()
             return HeartbeatResponse(**resp.json())
+
+    def peer_websocket(self, node_id: str, token: str):
+        """Return a websockets connection context manager for the peer update stream."""
+        ws_url = (
+            self._base
+            .replace("https://", "wss://")
+            .replace("http://", "ws://")
+        )
+        ws_url += f"/api/v1/nodes/{node_id}/ws?token={token}"
+        return websockets.connect(ws_url)
 
     async def get_peers(self, node_id: str, token: str) -> list[Peer]:
         async with httpx.AsyncClient() as client:
