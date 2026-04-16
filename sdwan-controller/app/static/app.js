@@ -80,6 +80,7 @@ const fetchNodes   = ()      => api('/api/v1/nodes/');
 const fetchTokens  = ()      => api('/api/v1/auth/tokens');
 const activateNode = id      => api(`/api/v1/nodes/${id}/activate`, { method: 'PATCH' });
 const revokeNode   = id      => api(`/api/v1/nodes/${id}/revoke`,   { method: 'DELETE' });
+const deleteNode   = id      => api(`/api/v1/nodes/${id}`,          { method: 'DELETE' });
 const createToken  = label   => api('/api/v1/auth/tokens', { method: 'POST', body: JSON.stringify({ label }) });
 const deleteToken  = id      => api(`/api/v1/auth/tokens/${id}`,    { method: 'DELETE' });
 
@@ -158,6 +159,9 @@ function renderNodes() {
     const revokeBtn = n.status !== 'REVOKED'
       ? `<button class="row-btn" onclick="doRevoke('${e(n.id)}','${e(n.name)}')">Revoke</button>`
       : '';
+    const deleteBtn = n.status === 'REVOKED'
+      ? `<button class="row-btn" onclick="doDelete('${e(n.id)}','${e(n.name)}')">Delete</button>`
+      : '';
 
     return `<tr>
       <td class="td-name">${e(n.name)}</td>
@@ -171,7 +175,7 @@ function renderNodes() {
         ? `<span class="nat-pill">NAT</span>`
         : `<span style="color:var(--gray-300);font-size:12px">—</span>`}</td>
       <td class="${tsClass}">${relTime(n.last_seen)}</td>
-      <td class="td-actions">${activateBtn}${revokeBtn}</td>
+      <td class="td-actions">${activateBtn}${revokeBtn}${deleteBtn}</td>
     </tr>`;
   }).join('');
 }
@@ -265,6 +269,17 @@ function doRevoke(id, name) {
     `Revoke <strong>${e(name)}</strong>? It will be excluded from all peer lists. This cannot be undone.`,
     async () => {
       try { await revokeNode(id); toast(`${name} revoked`); await refresh(); }
+      catch (err) { toast(err.message, 'err'); }
+    }
+  );
+}
+
+function doDelete(id, name) {
+  confirm(
+    'Delete node',
+    `Permanently delete <strong>${e(name)}</strong>? The record will be removed and its VPN IP freed for reuse.`,
+    async () => {
+      try { await deleteNode(id); toast(`${name} deleted`); await refresh(); }
       catch (err) { toast(err.message, 'err'); }
     }
   );

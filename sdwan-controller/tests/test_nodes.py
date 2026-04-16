@@ -222,6 +222,94 @@ async def test_revoke_requires_admin_token(client: AsyncClient):
 
 
 # ---------------------------------------------------------------------------
+# Admin: delete
+# ---------------------------------------------------------------------------
+
+
+async def test_delete_node_removes_it(client: AsyncClient):
+    reg = await client.post("/api/v1/nodes/register", json=node_payload())
+    node_id = reg.json()["id"]
+
+    response = await client.delete(
+        f"/api/v1/nodes/{node_id}",
+        headers={"Authorization": f"Bearer {ADMIN_TOKEN}"},
+    )
+    assert response.status_code == 204
+
+    list_resp = await client.get(
+        "/api/v1/nodes/",
+        headers={"Authorization": f"Bearer {ADMIN_TOKEN}"},
+    )
+    assert list_resp.json() == []
+
+
+async def test_delete_node_frees_vpn_ip(client: AsyncClient):
+    """VPN IP is reassigned after the original node is deleted."""
+    reg1 = await client.post("/api/v1/nodes/register", json=node_payload())
+    ip1 = reg1.json()["vpn_ip"]
+    node1_id = reg1.json()["id"]
+
+    await client.delete(
+        f"/api/v1/nodes/{node1_id}",
+        headers={"Authorization": f"Bearer {ADMIN_TOKEN}"},
+    )
+
+    reg2 = await client.post(
+        "/api/v1/nodes/register",
+        json=node_payload(name="node2", wireguard_public_key="key2=="),
+    )
+    assert reg2.json()["vpn_ip"] == ip1
+
+
+async def test_delete_node_nullifies_preauth_token_reference(client: AsyncClient):
+    """Deleting a node clears used_by_node_id on the preauth token."""
+    token_resp = await client.post(
+        "/api/v1/auth/tokens",
+        json={"label": "delete-test"},
+        headers={"Authorization": f"Bearer {ADMIN_TOKEN}"},
+    )
+    token = token_resp.json()["token"]
+    token_id = token_resp.json()["id"]
+
+    reg = await client.post(
+        "/api/v1/nodes/register",
+        json=node_payload(preauth_token=token),
+    )
+    node_id = reg.json()["id"]
+
+    await client.delete(
+        f"/api/v1/nodes/{node_id}",
+        headers={"Authorization": f"Bearer {ADMIN_TOKEN}"},
+    )
+
+    tokens = await client.get(
+        "/api/v1/auth/tokens",
+        headers={"Authorization": f"Bearer {ADMIN_TOKEN}"},
+    )
+    t = next(x for x in tokens.json() if x["id"] == token_id)
+    assert t["used_by_node_id"] is None
+
+
+async def test_delete_node_requires_admin(client: AsyncClient):
+    reg = await client.post("/api/v1/nodes/register", json=node_payload())
+    node_id = reg.json()["id"]
+
+    response = await client.delete(
+        f"/api/v1/nodes/{node_id}",
+        headers={"Authorization": "Bearer wrong"},
+    )
+    assert response.status_code == 401
+
+
+async def test_delete_nonexistent_node(client: AsyncClient):
+    response = await client.delete(
+        "/api/v1/nodes/does-not-exist",
+        headers={"Authorization": f"Bearer {ADMIN_TOKEN}"},
+    )
+    assert response.status_code == 404
+
+
+# ---------------------------------------------------------------------------
 # Admin: list
 # ---------------------------------------------------------------------------
 

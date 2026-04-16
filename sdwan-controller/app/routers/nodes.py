@@ -62,6 +62,15 @@ async def revoke(
     return NodeAdminResponse.model_validate(node)
 
 
+@router.delete("/{node_id}", status_code=204)
+async def delete(
+    node_id: str,
+    session: AsyncSession = Depends(get_session),
+    _: None = Depends(require_admin),
+) -> None:
+    await node_service.delete_node(node_id, session)
+
+
 @router.get("/", response_model=list[NodeAdminResponse])
 async def list_nodes(
     session: AsyncSession = Depends(get_session),

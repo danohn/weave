@@ -145,6 +145,21 @@ async def revoke_node(node_id: str, session: AsyncSession) -> Node:
     return node
 
 
+async def delete_node(node_id: str, session: AsyncSession) -> None:
+    result = await session.execute(select(Node).where(Node.id == node_id))
+    node = result.scalar_one_or_none()
+    if not node:
+        raise HTTPException(status_code=404, detail="Node not found")
+    # Nullify any preauth token FK referencing this node before deletion
+    token_result = await session.execute(
+        select(PreAuthToken).where(PreAuthToken.used_by_node_id == node_id)
+    )
+    for token in token_result.scalars().all():
+        token.used_by_node_id = None
+    await session.delete(node)
+    await session.commit()
+
+
 async def list_all_nodes(session: AsyncSession) -> list[Node]:
     result = await session.execute(select(Node))
     return list(result.scalars().all())
