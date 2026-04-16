@@ -9,11 +9,10 @@ set -euo pipefail
 
 usage() {
   cat <<EOF
-Usage: $0 --controller-url URL --endpoint-ip IP [OPTIONS]
+Usage: $0 --controller-url URL [OPTIONS]
 
 Required:
-  --controller-url URL    Controller base URL (e.g. http://192.168.1.1:8005)
-  --endpoint-ip IP        This node's public IP reported to the controller
+  --controller-url URL    Controller base URL (e.g. https://weave.example.com)
 
 Optional:
   --node-name NAME        Node name (default: hostname)
@@ -33,7 +32,6 @@ fi
 
 # Defaults
 CONTROLLER_URL=""
-ENDPOINT_IP=""
 NODE_NAME="$(hostname)"
 PREAUTH_TOKEN=""
 ENDPOINT_PORT="51820"
@@ -45,7 +43,6 @@ PEER_POLL_INTERVAL="60"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --controller-url)   CONTROLLER_URL="$2";   shift 2 ;;
-    --endpoint-ip)      ENDPOINT_IP="$2";      shift 2 ;;
     --node-name)        NODE_NAME="$2";        shift 2 ;;
     --preauth-token)    PREAUTH_TOKEN="$2";    shift 2 ;;
     --endpoint-port)    ENDPOINT_PORT="$2";    shift 2 ;;
@@ -56,8 +53,8 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ -z "$CONTROLLER_URL" || -z "$ENDPOINT_IP" ]]; then
-  echo "Error: --controller-url and --endpoint-ip are required"
+if [[ -z "$CONTROLLER_URL" ]]; then
+  echo "Error: --controller-url is required"
   usage
 fi
 
@@ -85,7 +82,6 @@ chmod 700 /etc/weave
 # Write env file
 cat > /etc/weave/agent.env <<EOF
 CONTROLLER_URL=${CONTROLLER_URL}
-ENDPOINT_IP=${ENDPOINT_IP}
 NODE_NAME=${NODE_NAME}
 ENDPOINT_PORT=${ENDPOINT_PORT}
 INTERFACE=${INTERFACE}

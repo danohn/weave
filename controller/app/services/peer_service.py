@@ -14,24 +14,13 @@ async def get_peers(node: Node, session: AsyncSession) -> list[PeerResponse]:
     )
     peers = list(result.scalars().all())
 
-    peer_responses: list[PeerResponse] = []
-    for peer in peers:
-        nat_detected = (
-            peer.reflected_endpoint_ip is not None
-            and peer.reflected_endpoint_ip != peer.endpoint_ip
+    return [
+        PeerResponse(
+            name=peer.name,
+            wireguard_public_key=peer.wireguard_public_key,
+            vpn_ip=peer.vpn_ip,
+            preferred_endpoint=peer.reflected_endpoint_ip or peer.endpoint_ip,
+            endpoint_port=peer.endpoint_port,
         )
-        preferred_endpoint = (
-            peer.reflected_endpoint_ip if nat_detected else peer.endpoint_ip
-        )
-        peer_responses.append(
-            PeerResponse(
-                name=peer.name,
-                wireguard_public_key=peer.wireguard_public_key,
-                vpn_ip=peer.vpn_ip,
-                preferred_endpoint=preferred_endpoint,
-                endpoint_port=peer.endpoint_port,
-                nat_detected=nat_detected,
-            )
-        )
-
-    return peer_responses
+        for peer in peers
+    ]

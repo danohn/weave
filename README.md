@@ -97,8 +97,7 @@ Then on the new node (as root), run:
 ```bash
 curl -fsSL https://raw.githubusercontent.com/danohn/weave/refs/heads/main/agent/install.sh \
   | bash -s -- \
-      --controller-url http://<controller-host>:8005 \
-      --endpoint-ip <this-node-ip> \
+      --controller-url https://<controller-host> \
       --node-name <name> \
       --preauth-token <token>
 ```

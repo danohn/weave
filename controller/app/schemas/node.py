@@ -9,8 +9,8 @@ from app.db.models import NodeStatus
 class NodeRegisterRequest(BaseModel):
     name: str
     wireguard_public_key: str
-    endpoint_ip: str
     endpoint_port: int
+    # endpoint_ip is derived from request.client.host by the controller
     # vpn_ip is auto-assigned by the controller from VPN_SUBNET
     preauth_token: Optional[str] = None
 
@@ -32,7 +32,6 @@ class PeerResponse(BaseModel):
     vpn_ip: str
     preferred_endpoint: str
     endpoint_port: int
-    nat_detected: bool
 
 
 class NodeAdminResponse(BaseModel):

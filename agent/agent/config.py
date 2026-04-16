@@ -12,7 +12,6 @@ class Settings(BaseSettings):
 
     # Required
     CONTROLLER_URL: str
-    ENDPOINT_IP: str
 
     # Optional with sensible defaults
     NODE_NAME: str = socket.gethostname()

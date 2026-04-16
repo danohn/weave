@@ -23,7 +23,6 @@ class Peer:
     vpn_ip: str
     preferred_endpoint: str
     endpoint_port: int
-    nat_detected: bool
 
 
 class ControllerClient:
@@ -34,14 +33,12 @@ class ControllerClient:
         self,
         name: str,
         wireguard_public_key: str,
-        endpoint_ip: str,
         endpoint_port: int,
         preauth_token: str | None = None,
     ) -> RegisterResponse:
         payload: dict = {
             "name": name,
             "wireguard_public_key": wireguard_public_key,
-            "endpoint_ip": endpoint_ip,
             "endpoint_port": endpoint_port,
         }
         if preauth_token is not None:

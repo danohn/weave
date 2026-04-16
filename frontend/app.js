@@ -183,7 +183,6 @@ function renderNodes() {
   );
 
   tbody.innerHTML = sorted.map(n => {
-    const natDetected = n.reflected_endpoint_ip && n.reflected_endpoint_ip !== n.endpoint_ip;
     const tsClass = tsAgeClass(n.last_seen);
 
     const activateBtn = n.status === 'PENDING'
@@ -201,12 +200,6 @@ function renderNodes() {
       <td>${badge(n.status)}</td>
       <td class="td-mono">${e(n.vpn_ip)}</td>
       <td class="td-mono">${e(n.endpoint_ip)}:${e(String(n.endpoint_port))}</td>
-      <td class="td-mono">${n.reflected_endpoint_ip
-        ? e(n.reflected_endpoint_ip)
-        : `<span style="color:var(--gray-300)">—</span>`}</td>
-      <td>${natDetected
-        ? `<span class="nat-pill">NAT</span>`
-        : `<span style="color:var(--gray-300);font-size:12px">—</span>`}</td>
       <td class="${tsClass}">${relTime(n.last_seen)}</td>
       <td class="td-actions">${activateBtn}${revokeBtn}${deleteBtn}</td>
     </tr>`;

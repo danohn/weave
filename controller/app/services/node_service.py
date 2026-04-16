@@ -62,7 +62,7 @@ async def register_node(
     node = Node(
         name=data.name,
         wireguard_public_key=data.wireguard_public_key,
-        endpoint_ip=data.endpoint_ip,
+        endpoint_ip=reflected_ip,
         endpoint_port=data.endpoint_port,
         vpn_ip=vpn_ip,
         reflected_endpoint_ip=reflected_ip,
