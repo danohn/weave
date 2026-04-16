@@ -5,8 +5,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.agent_ws import agent_manager
+from app.core.websocket import broadcast_state
+from app.core.agent_ws import broadcast_peers
 from app.db.base import AsyncSessionLocal
 from app.db.models import Node, NodeStatus
+from app.services import node_service
 
 logger = logging.getLogger(__name__)
 
@@ -50,3 +53,14 @@ async def agent_ws(websocket: WebSocket, node_id: str) -> None:
             pass
         finally:
             agent_manager.disconnect(node_id)
+            # Mark the node OFFLINE immediately on disconnect rather than waiting
+            # for the stale heartbeat sweep. If it was a transient blip the next
+            # heartbeat will auto-recover it to ACTIVE within one interval.
+            # Re-fetch so we act on the current status, not the state at connect time.
+            result = await session.execute(select(Node).where(Node.id == node_id))
+            current = result.scalar_one_or_none()
+            if current and current.status == NodeStatus.ACTIVE:
+                logger.info("Agent %s disconnected — marking OFFLINE", node_id)
+                await node_service.mark_node_offline(current, session)
+                await broadcast_state(session)
+                await broadcast_peers(session)
