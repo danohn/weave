@@ -5,7 +5,7 @@ WORKDIR /app
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 COPY pyproject.toml ./
-RUN uv pip install --system --no-dev .
+RUN uv pip install --system .
 
 COPY app/ ./app/
 COPY alembic/ ./alembic/
