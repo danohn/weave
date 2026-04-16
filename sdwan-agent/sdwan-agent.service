@@ -1,0 +1,24 @@
+[Unit]
+Description=SD-WAN Agent
+Documentation=https://github.com/your-org/sdn
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/sdwan-agent/agent.env
+ExecStart=/usr/local/bin/sdwan-agent
+Restart=on-failure
+RestartSec=10
+# Give the network time to settle on boot
+ExecStartPre=/bin/sleep 2
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=sdwan-agent
+
+# WireGuard needs root to manage interfaces
+User=root
+
+[Install]
+WantedBy=multi-user.target
