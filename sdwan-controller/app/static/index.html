@@ -1,0 +1,892 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SD-WAN Dashboard</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --font: Inter, -apple-system, BlinkMacSystemFont, Helvetica, Arial, sans-serif;
+      --black: #000000;
+      --white: #ffffff;
+      --gray-50:  #fafafa;
+      --gray-100: #f5f5f5;
+      --gray-200: #e5e5e5;
+      --gray-300: #d4d4d4;
+      --gray-400: #a3a3a3;
+      --gray-500: #737373;
+      --gray-600: #525252;
+      --gray-700: #404040;
+      --gray-800: #262626;
+    }
+
+    body {
+      font-family: var(--font);
+      font-size: 14px;
+      line-height: 1.5;
+      color: var(--black);
+      background: var(--white);
+      min-height: 100vh;
+    }
+
+    /* ── Header ───────────────────────────────────────────────── */
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      height: 52px;
+      padding: 0 24px;
+      background: var(--white);
+      border-bottom: 1px solid var(--gray-200);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+    }
+
+    .logo-mark {
+      width: 22px;
+      height: 22px;
+      background: var(--black);
+      border-radius: 5px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .logo-mark svg { display: block; }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .health-badge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--gray-500);
+    }
+
+    .health-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--gray-300);
+      flex-shrink: 0;
+      transition: background 0.3s;
+    }
+
+    .health-dot.ok    { background: var(--black); }
+    .health-dot.error { background: var(--gray-400); }
+
+    /* auto-refresh toggle */
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--gray-500);
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .pill {
+      width: 30px;
+      height: 17px;
+      border-radius: 9px;
+      background: var(--gray-200);
+      position: relative;
+      transition: background 0.2s;
+      flex-shrink: 0;
+    }
+
+    .pill::after {
+      content: '';
+      position: absolute;
+      top: 2.5px;
+      left: 2.5px;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: var(--white);
+      transition: left 0.2s;
+      box-shadow: 0 1px 2px rgba(0,0,0,.15);
+    }
+
+    .pill.on { background: var(--black); }
+    .pill.on::after { left: 15.5px; }
+
+    .icon-btn {
+      width: 30px;
+      height: 30px;
+      border-radius: 6px;
+      border: 1px solid var(--gray-200);
+      background: var(--white);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--gray-700);
+      transition: background 0.1s, border-color 0.1s;
+    }
+
+    .icon-btn:hover { background: var(--gray-50); border-color: var(--gray-300); }
+
+    .icon-btn svg { display: block; }
+    .icon-btn.spinning svg { animation: spin 0.8s linear infinite; }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Main layout ──────────────────────────────────────────── */
+    main {
+      max-width: 1320px;
+      margin: 0 auto;
+      padding: 20px 24px 48px;
+    }
+
+    /* ── Config bar ───────────────────────────────────────────── */
+    .config-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      padding: 12px 14px;
+      border: 1px solid var(--gray-200);
+      border-radius: 8px;
+      margin-bottom: 20px;
+      background: var(--gray-50);
+    }
+
+    .config-field {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      flex: 1;
+      min-width: 180px;
+    }
+
+    .config-field label {
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--gray-500);
+      white-space: nowrap;
+    }
+
+    .config-field input {
+      flex: 1;
+      height: 30px;
+      padding: 0 10px;
+      font-size: 13px;
+      font-family: var(--font);
+      border: 1px solid var(--gray-200);
+      border-radius: 6px;
+      background: var(--white);
+      outline: none;
+      transition: border-color 0.15s;
+      min-width: 0;
+    }
+
+    .config-field input:focus { border-color: var(--black); }
+
+    /* ── Buttons ──────────────────────────────────────────────── */
+    .btn {
+      height: 30px;
+      padding: 0 14px;
+      font-size: 13px;
+      font-weight: 500;
+      font-family: var(--font);
+      border-radius: 6px;
+      cursor: pointer;
+      border: 1px solid transparent;
+      white-space: nowrap;
+      transition: background 0.1s, color 0.1s, border-color 0.1s;
+      display: inline-flex;
+      align-items: center;
+    }
+
+    .btn-primary   { background: var(--black); color: var(--white); }
+    .btn-primary:hover { background: var(--gray-800); }
+
+    .btn-ghost {
+      background: var(--white);
+      color: var(--black);
+      border-color: var(--gray-200);
+    }
+    .btn-ghost:hover { background: var(--gray-50); border-color: var(--gray-300); }
+
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; pointer-events: none; }
+
+    /* ── Stats grid ───────────────────────────────────────────── */
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    @media (max-width: 600px) {
+      .stats { grid-template-columns: repeat(2, 1fr); }
+    }
+
+    .stat-card {
+      border: 1px solid var(--gray-200);
+      border-radius: 8px;
+      padding: 14px 16px;
+    }
+
+    .stat-label {
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--gray-400);
+      margin-bottom: 6px;
+    }
+
+    .stat-num {
+      font-size: 30px;
+      font-weight: 600;
+      letter-spacing: -0.03em;
+      line-height: 1;
+      color: var(--black);
+    }
+
+    .stat-card.dim .stat-num { color: var(--gray-300); }
+    .stat-card.muted .stat-num { color: var(--gray-400); }
+
+    /* ── Section header ───────────────────────────────────────── */
+    .section-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+
+    .section-title {
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--gray-500);
+    }
+
+    .section-meta {
+      font-size: 11px;
+      color: var(--gray-400);
+    }
+
+    /* ── Table ────────────────────────────────────────────────── */
+    .table-shell {
+      border: 1px solid var(--gray-200);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    thead th {
+      padding: 8px 12px;
+      text-align: left;
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--gray-400);
+      background: var(--gray-50);
+      border-bottom: 1px solid var(--gray-200);
+      white-space: nowrap;
+    }
+
+    thead th:last-child { text-align: right; }
+
+    tbody tr { border-bottom: 1px solid var(--gray-100); }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: var(--gray-50); }
+
+    td {
+      padding: 9px 12px;
+      vertical-align: middle;
+    }
+
+    td.td-name { font-weight: 500; }
+
+    td.td-mono {
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 12px;
+      color: var(--gray-700);
+    }
+
+    td.td-actions { text-align: right; white-space: nowrap; }
+
+    /* ── Status badge ─────────────────────────────────────────── */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 2px 7px 2px 6px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.02em;
+      white-space: nowrap;
+    }
+
+    .badge-pip {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .badge-active  { background: var(--black); color: var(--white); }
+    .badge-active .badge-pip { background: rgba(255,255,255,.5); }
+
+    .badge-pending {
+      background: var(--white);
+      color: var(--black);
+      border: 1px solid var(--black);
+    }
+    .badge-pending .badge-pip { background: var(--black); }
+
+    .badge-offline { background: var(--gray-100); color: var(--gray-500); }
+    .badge-offline .badge-pip { background: var(--gray-400); }
+
+    .badge-revoked { background: var(--gray-100); color: var(--gray-400); text-decoration: line-through; }
+    .badge-revoked .badge-pip { background: var(--gray-300); }
+
+    /* ── NAT pill ─────────────────────────────────────────────── */
+    .nat-pill {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      padding: 1px 5px;
+      border-radius: 3px;
+      background: var(--gray-200);
+      color: var(--gray-600);
+    }
+
+    /* ── Row action buttons ───────────────────────────────────── */
+    .row-btn {
+      height: 24px;
+      padding: 0 9px;
+      font-size: 11px;
+      font-weight: 500;
+      font-family: var(--font);
+      border-radius: 4px;
+      cursor: pointer;
+      border: 1px solid var(--gray-200);
+      background: var(--white);
+      color: var(--gray-600);
+      transition: background 0.1s, color 0.1s, border-color 0.1s;
+      margin-left: 4px;
+    }
+
+    .row-btn:hover { background: var(--gray-100); color: var(--black); }
+
+    .row-btn.activate-btn {
+      color: var(--black);
+      border-color: var(--gray-400);
+    }
+    .row-btn.activate-btn:hover {
+      background: var(--black);
+      color: var(--white);
+      border-color: var(--black);
+    }
+
+    /* ── Timestamp classes ────────────────────────────────────── */
+    .ts-fresh { color: var(--black); }
+    .ts-warm  { color: var(--gray-600); }
+    .ts-stale { color: var(--gray-400); }
+
+    /* ── Empty / loading states ───────────────────────────────── */
+    .placeholder {
+      padding: 40px 24px;
+      text-align: center;
+      color: var(--gray-400);
+      font-size: 13px;
+    }
+
+    /* ── Confirm modal ────────────────────────────────────────── */
+    .overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.35);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 50;
+    }
+
+    .overlay.open { display: flex; }
+
+    .modal {
+      background: var(--white);
+      border: 1px solid var(--gray-200);
+      border-radius: 10px;
+      padding: 22px 24px 20px;
+      width: 360px;
+      max-width: calc(100vw - 48px);
+    }
+
+    .modal-title {
+      font-size: 15px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    .modal-desc {
+      font-size: 13px;
+      color: var(--gray-600);
+      line-height: 1.6;
+      margin-bottom: 20px;
+    }
+
+    .modal-desc strong { color: var(--black); }
+
+    .modal-footer {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    /* ── Toasts ───────────────────────────────────────────────── */
+    #toasts {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      z-index: 100;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      pointer-events: none;
+    }
+
+    .toast {
+      padding: 9px 14px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      border: 1px solid;
+      animation: toastIn 0.18s ease;
+      pointer-events: all;
+    }
+
+    .toast-ok  { background: var(--black); color: var(--white); border-color: var(--black); }
+    .toast-err { background: var(--white); color: var(--black); border-color: var(--gray-300); box-shadow: 0 2px 8px rgba(0,0,0,.1); }
+
+    @keyframes toastIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Header ────────────────────────────────────────────────────────── -->
+<header>
+  <div class="logo">
+    <div class="logo-mark">
+      <!-- Simple network/node icon -->
+      <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+        <circle cx="6" cy="6" r="2" fill="white"/>
+        <circle cx="1.5" cy="1.5" r="1.5" fill="white" opacity=".5"/>
+        <circle cx="10.5" cy="1.5" r="1.5" fill="white" opacity=".5"/>
+        <circle cx="1.5" cy="10.5" r="1.5" fill="white" opacity=".5"/>
+        <circle cx="10.5" cy="10.5" r="1.5" fill="white" opacity=".5"/>
+        <line x1="6" y1="4" x2="2.5" y2="2.5" stroke="white" stroke-width="1" opacity=".4"/>
+        <line x1="6" y1="4" x2="9.5" y2="2.5" stroke="white" stroke-width="1" opacity=".4"/>
+        <line x1="6" y1="8" x2="2.5" y2="9.5" stroke="white" stroke-width="1" opacity=".4"/>
+        <line x1="6" y1="8" x2="9.5" y2="9.5" stroke="white" stroke-width="1" opacity=".4"/>
+      </svg>
+    </div>
+    SD-WAN
+  </div>
+
+  <div class="header-right">
+    <div class="health-badge">
+      <div class="health-dot" id="hdot"></div>
+      <span id="hlabel">Disconnected</span>
+    </div>
+
+    <div class="toggle-row" id="ar-toggle" title="Auto-refresh every 30s">
+      <div class="pill on" id="ar-pill"></div>
+      Auto
+    </div>
+
+    <button class="icon-btn" id="refresh-btn" title="Refresh now">
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+        <path d="M13.5 8A5.5 5.5 0 1 1 8 2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        <path d="M8 2.5 L11 5.5 L8 8.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
+  </div>
+</header>
+
+<!-- ── Main ──────────────────────────────────────────────────────────── -->
+<main>
+
+  <!-- Config bar -->
+  <div class="config-bar">
+    <div class="config-field">
+      <label>Server</label>
+      <input id="inp-url" type="text" placeholder="http://localhost:8005" autocomplete="off" spellcheck="false">
+    </div>
+    <div class="config-field">
+      <label>Token</label>
+      <input id="inp-token" type="password" placeholder="admin token" autocomplete="off">
+    </div>
+    <button class="btn btn-primary" id="connect-btn">Connect</button>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats">
+    <div class="stat-card">
+      <div class="stat-label">Total</div>
+      <div class="stat-num" id="s-total">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Active</div>
+      <div class="stat-num" id="s-active">—</div>
+    </div>
+    <div class="stat-card muted">
+      <div class="stat-label">Pending</div>
+      <div class="stat-num" id="s-pending">—</div>
+    </div>
+    <div class="stat-card dim">
+      <div class="stat-label">Offline</div>
+      <div class="stat-num" id="s-offline">—</div>
+    </div>
+  </div>
+
+  <!-- Nodes -->
+  <div class="section-head">
+    <div class="section-title">Nodes</div>
+    <div class="section-meta" id="updated-at"></div>
+  </div>
+
+  <div class="table-shell">
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Status</th>
+          <th>VPN IP</th>
+          <th>Endpoint</th>
+          <th>Reflected</th>
+          <th>NAT</th>
+          <th>Last seen</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="tbody">
+        <tr><td colspan="8">
+          <div class="placeholder">Enter your server URL and admin token to connect</div>
+        </td></tr>
+      </tbody>
+    </table>
+  </div>
+
+</main>
+
+<!-- ── Confirm modal ──────────────────────────────────────────────────── -->
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <div class="modal-title" id="m-title"></div>
+    <div class="modal-desc"  id="m-desc"></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" id="m-cancel">Cancel</button>
+      <button class="btn btn-primary" id="m-ok">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Toasts ─────────────────────────────────────────────────────────── -->
+<div id="toasts"></div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+const state = {
+  url: '',
+  token: '',
+  nodes: [],
+  connected: false,
+  autoRefresh: true,
+  timer: null,
+  lastUpdated: null,
+};
+
+// ── DOM ────────────────────────────────────────────────────────────────────
+const get = id => document.getElementById(id);
+const inpUrl     = get('inp-url');
+const inpToken   = get('inp-token');
+const connectBtn = get('connect-btn');
+const refreshBtn = get('refresh-btn');
+const arPill     = get('ar-pill');
+const arToggle   = get('ar-toggle');
+const hdot       = get('hdot');
+const hlabel     = get('hlabel');
+const tbody      = get('tbody');
+const updatedAt  = get('updated-at');
+const overlay    = get('overlay');
+const mTitle     = get('m-title');
+const mDesc      = get('m-desc');
+const mOk        = get('m-ok');
+const mCancel    = get('m-cancel');
+
+// ── Persistence ────────────────────────────────────────────────────────────
+(function loadConfig() {
+  const savedUrl   = localStorage.getItem('sdwan_url') || '';
+  const savedToken = localStorage.getItem('sdwan_token') || '';
+  // Default to same origin when served from the controller
+  inpUrl.value   = savedUrl   || (location.hostname !== '' ? location.origin : '');
+  inpToken.value = savedToken || '';
+  if (savedUrl && savedToken) {
+    state.url   = savedUrl.replace(/\/$/, '');
+    state.token = savedToken;
+  }
+})();
+
+function saveConfig() {
+  localStorage.setItem('sdwan_url',   state.url);
+  localStorage.setItem('sdwan_token', state.token);
+}
+
+// ── API helpers ────────────────────────────────────────────────────────────
+async function api(path, opts = {}) {
+  const res = await fetch(state.url + path, {
+    ...opts,
+    headers: {
+      Authorization: `Bearer ${state.token}`,
+      'Content-Type': 'application/json',
+      ...(opts.headers || {}),
+    },
+  });
+  if (!res.ok) {
+    const txt = await res.text().catch(() => '');
+    let msg = `${res.status} ${res.statusText}`;
+    try { msg += ': ' + JSON.parse(txt).detail; } catch { if (txt) msg += ': ' + txt; }
+    throw new Error(msg);
+  }
+  return res.status === 204 ? null : res.json();
+}
+
+const fetchHealth = ()           => api('/health');
+const fetchNodes  = ()           => api('/api/v1/nodes/');
+const activateNode = id          => api(`/api/v1/nodes/${id}/activate`, { method: 'PATCH' });
+const revokeNode   = id          => api(`/api/v1/nodes/${id}/revoke`,   { method: 'DELETE' });
+
+// ── Refresh ────────────────────────────────────────────────────────────────
+async function refresh() {
+  if (!state.url || !state.token) return;
+  refreshBtn.classList.add('spinning');
+  try {
+    const [health, nodes] = await Promise.all([fetchHealth(), fetchNodes()]);
+    state.connected  = true;
+    state.nodes      = nodes;
+    state.lastUpdated = new Date();
+    setHealth(true, `${health.node_count} node${health.node_count !== 1 ? 's' : ''}`);
+    renderStats();
+    renderNodes();
+    renderTimestamp();
+  } catch (err) {
+    state.connected = false;
+    setHealth(false, 'Error');
+    toast(err.message, 'err');
+  } finally {
+    refreshBtn.classList.remove('spinning');
+  }
+}
+
+function setAutoRefresh(on) {
+  state.autoRefresh = on;
+  clearInterval(state.timer);
+  state.timer = null;
+  arPill.classList.toggle('on', on);
+  if (on) state.timer = setInterval(refresh, 30_000);
+}
+
+// ── Rendering ──────────────────────────────────────────────────────────────
+function setHealth(ok, text) {
+  hdot.className = `health-dot ${ok ? 'ok' : 'error'}`;
+  hlabel.textContent = text;
+}
+
+function renderStats() {
+  const n = state.nodes;
+  get('s-total').textContent   = n.length;
+  get('s-active').textContent  = n.filter(x => x.status === 'ACTIVE').length;
+  get('s-pending').textContent = n.filter(x => x.status === 'PENDING').length;
+  get('s-offline').textContent = n.filter(x => x.status === 'OFFLINE').length;
+}
+
+function renderTimestamp() {
+  if (!state.lastUpdated) return;
+  updatedAt.textContent = `Updated ${state.lastUpdated.toLocaleTimeString()}`;
+}
+
+const STATUS_ORDER = { ACTIVE: 0, PENDING: 1, OFFLINE: 2, REVOKED: 3 };
+
+function renderNodes() {
+  if (!state.nodes.length) {
+    tbody.innerHTML = `<tr><td colspan="8"><div class="placeholder">No nodes registered yet</div></td></tr>`;
+    return;
+  }
+
+  const sorted = [...state.nodes].sort(
+    (a, b) => (STATUS_ORDER[a.status] ?? 9) - (STATUS_ORDER[b.status] ?? 9)
+  );
+
+  tbody.innerHTML = sorted.map(n => {
+    const natDetected = n.reflected_endpoint_ip && n.reflected_endpoint_ip !== n.endpoint_ip;
+    const tsClass = tsAgeClass(n.last_seen);
+
+    const activateBtn = n.status === 'PENDING'
+      ? `<button class="row-btn activate-btn" onclick="doActivate('${e(n.id)}','${e(n.name)}')">Activate</button>`
+      : '';
+
+    const revokeBtn = n.status !== 'REVOKED'
+      ? `<button class="row-btn" onclick="doRevoke('${e(n.id)}','${e(n.name)}')">Revoke</button>`
+      : '';
+
+    return `<tr>
+      <td class="td-name">${e(n.name)}</td>
+      <td>${badge(n.status)}</td>
+      <td class="td-mono">${e(n.vpn_ip)}</td>
+      <td class="td-mono">${e(n.endpoint_ip)}:${e(String(n.endpoint_port))}</td>
+      <td class="td-mono">${n.reflected_endpoint_ip
+        ? e(n.reflected_endpoint_ip)
+        : `<span style="color:var(--gray-300)">—</span>`}</td>
+      <td>${natDetected
+        ? `<span class="nat-pill">NAT</span>`
+        : `<span style="color:var(--gray-300);font-size:12px">—</span>`}</td>
+      <td class="${tsClass}">${relTime(n.last_seen)}</td>
+      <td class="td-actions">${activateBtn}${revokeBtn}</td>
+    </tr>`;
+  }).join('');
+}
+
+function badge(status) {
+  const cls = 'badge-' + status.toLowerCase();
+  return `<span class="badge ${cls}"><span class="badge-pip"></span>${e(status)}</span>`;
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+function e(str) {
+  return String(str)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function relTime(iso) {
+  if (!iso) return '—';
+  const sec = (Date.now() - new Date(iso.endsWith('Z') ? iso : iso + 'Z')) / 1000;
+  if (sec < 60)   return `${Math.round(sec)}s ago`;
+  if (sec < 3600) return `${Math.floor(sec / 60)}m ago`;
+  if (sec < 86400) return `${Math.floor(sec / 3600)}h ago`;
+  return `${Math.floor(sec / 86400)}d ago`;
+}
+
+function tsAgeClass(iso) {
+  if (!iso) return '';
+  const sec = (Date.now() - new Date(iso.endsWith('Z') ? iso : iso + 'Z')) / 1000;
+  if (sec < 45)  return 'ts-fresh';
+  if (sec < 180) return 'ts-warm';
+  return 'ts-stale';
+}
+
+// ── Actions ────────────────────────────────────────────────────────────────
+function doActivate(id, name) {
+  confirm(
+    'Activate node',
+    `Activate <strong>${e(name)}</strong>? It will join the mesh and become visible to all peers.`,
+    async () => {
+      try { await activateNode(id); toast(`${name} activated`); await refresh(); }
+      catch (err) { toast(err.message, 'err'); }
+    }
+  );
+}
+
+function doRevoke(id, name) {
+  confirm(
+    'Revoke node',
+    `Revoke <strong>${e(name)}</strong>? It will be excluded from all peer lists. This cannot be undone.`,
+    async () => {
+      try { await revokeNode(id); toast(`${name} revoked`); await refresh(); }
+      catch (err) { toast(err.message, 'err'); }
+    }
+  );
+}
+
+// ── Modal ──────────────────────────────────────────────────────────────────
+let _cb = null;
+
+function confirm(title, desc, cb) {
+  mTitle.textContent = title;
+  mDesc.innerHTML = desc;
+  _cb = cb;
+  overlay.classList.add('open');
+}
+
+function closeModal() { overlay.classList.remove('open'); _cb = null; }
+
+mOk.addEventListener('click', async () => { closeModal(); if (_cb) await _cb(); });
+mCancel.addEventListener('click', closeModal);
+overlay.addEventListener('click', ev => { if (ev.target === overlay) closeModal(); });
+
+// ── Toast ──────────────────────────────────────────────────────────────────
+function toast(msg, type = 'ok') {
+  const el = document.createElement('div');
+  el.className = `toast toast-${type}`;
+  el.textContent = msg;
+  get('toasts').appendChild(el);
+  setTimeout(() => el.remove(), 3500);
+}
+
+// ── Events ─────────────────────────────────────────────────────────────────
+connectBtn.addEventListener('click', () => {
+  const url   = inpUrl.value.trim().replace(/\/$/, '');
+  const token = inpToken.value.trim();
+  if (!url)   { toast('Enter a server URL', 'err'); return; }
+  if (!token) { toast('Enter an admin token', 'err'); return; }
+  state.url   = url;
+  state.token = token;
+  saveConfig();
+  refresh();
+});
+
+inpUrl.addEventListener('keydown',   ev => ev.key === 'Enter' && connectBtn.click());
+inpToken.addEventListener('keydown', ev => ev.key === 'Enter' && connectBtn.click());
+
+refreshBtn.addEventListener('click', refresh);
+arToggle.addEventListener('click', () => setAutoRefresh(!state.autoRefresh));
+
+// ── Boot ───────────────────────────────────────────────────────────────────
+setAutoRefresh(true);
+if (state.url && state.token) refresh();
+
+// Tick relative timestamps every 10s without a full API call
+setInterval(() => {
+  if (state.nodes.length) { renderNodes(); renderTimestamp(); }
+}, 10_000);
+</script>
+</body>
+</html>
