@@ -32,11 +32,13 @@ async def _expiry_loop() -> None:
         await asyncio.sleep(settings.STALE_CHECK_INTERVAL)
         try:
             async with AsyncSessionLocal() as session:
-                count = await node_service.expire_stale_nodes(
+                stale = await node_service.expire_stale_nodes(
                     session, settings.STALE_THRESHOLD_SECONDS
                 )
-                if count:
-                    logger.info("Marked %d node(s) OFFLINE (no heartbeat)", count)
+                if stale:
+                    logger.info("Marked %d node(s) OFFLINE (no heartbeat)", len(stale))
+                    for node in stale:
+                        await frr_service.remove_neighbor(node)
                     await broadcast_state(session)
                     await broadcast_peers(session)
         except Exception:

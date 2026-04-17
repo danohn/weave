@@ -66,6 +66,7 @@ async def heartbeat(
     # reflected IP may have changed while it was unreachable.
     if was_offline and node.status == NodeStatus.ACTIVE:
         await wireguard_service.add_peer(node)
+        await frr_service.add_neighbor(node)
     return HeartbeatResponse(status=node.status, last_seen=node.last_seen)
 
 
@@ -80,6 +81,7 @@ async def go_offline(
         raise HTTPException(status_code=403, detail="Token does not match node")
     if current_node.status == NodeStatus.ACTIVE:
         await node_service.mark_node_offline(current_node, session)
+        await frr_service.remove_neighbor(current_node)
         await broadcast_state(session)
         await broadcast_peers(session)
 

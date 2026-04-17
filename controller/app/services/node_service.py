@@ -100,10 +100,10 @@ async def update_heartbeat(
     return node
 
 
-async def expire_stale_nodes(session: AsyncSession, threshold_seconds: int) -> int:
+async def expire_stale_nodes(session: AsyncSession, threshold_seconds: int) -> list[Node]:
     """Set ACTIVE nodes to OFFLINE when last_seen is older than threshold_seconds.
 
-    Returns the number of nodes transitioned.
+    Returns the list of nodes transitioned so callers can clean up data-plane state.
     """
     cutoff = datetime.now(timezone.utc) - timedelta(seconds=threshold_seconds)
     result = await session.execute(
@@ -117,7 +117,7 @@ async def expire_stale_nodes(session: AsyncSession, threshold_seconds: int) -> i
         node.status = NodeStatus.OFFLINE
     if stale:
         await session.commit()
-    return len(stale)
+    return stale
 
 
 async def mark_node_offline(node: Node, session: AsyncSession) -> Node:
