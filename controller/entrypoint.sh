@@ -45,7 +45,8 @@ fi
 # Integrated config — one frr.conf for all daemons
 echo "service integrated-vtysh-config" > /etc/frr/vtysh.conf
 
-mkdir -p /var/run/frr
+mkdir -p /run/frr
+chown frr:frr /run/frr
 
 # Write base route reflector config.
 # Neighbors are added/removed dynamically via vtysh as nodes activate/revoke —
@@ -76,22 +77,35 @@ router bgp 65000
 !
 FRREOF
 
-# Start daemons in the background; failures are non-fatal so the API still
-# comes up even if FRR isn't available (e.g. missing kernel support).
-/usr/lib/frr/bgpd \
-  --daemon \
-  --config_file /etc/frr/frr.conf \
-  --pid_file /var/run/frr/bgpd.pid \
-  2>/dev/null && echo "[frr] bgpd started" || echo "[frr] bgpd failed to start (non-fatal)"
+# FRR drops to the frr user — config must be readable by it
+chown frr:frr /etc/frr/frr.conf
+chmod 640 /etc/frr/frr.conf
 
-/usr/lib/frr/bfdd \
-  --daemon \
+# Start daemons in the background without daemonizing (--daemon forks and can
+# misbehave in Docker without a proper init). Run in background subshells so
+# errors are visible in docker logs. Sockets go to /run/frr/ per FRR build config.
+if /usr/lib/frr/bgpd \
   --config_file /etc/frr/frr.conf \
-  --pid_file /var/run/frr/bfdd.pid \
-  2>/dev/null && echo "[frr] bfdd started" || echo "[frr] bfdd failed to start (non-fatal)"
+  --pid_file /run/frr/bgpd.pid \
+  >> /proc/1/fd/1 2>> /proc/1/fd/2 &
+then
+  echo "[frr] bgpd started (pid $!)"
+else
+  echo "[frr] bgpd failed to start (non-fatal)"
+fi
+
+if /usr/lib/frr/bfdd \
+  --config_file /etc/frr/frr.conf \
+  --pid_file /run/frr/bfdd.pid \
+  >> /proc/1/fd/1 2>> /proc/1/fd/2 &
+then
+  echo "[frr] bfdd started (pid $!)"
+else
+  echo "[frr] bfdd failed to start (non-fatal)"
+fi
 
 # Give FRR time to open its vtysh socket before the API tries to add neighbors
-sleep 2
+sleep 3
 
 # ── Database + API ───────────────────────────────────────────────────────────
 alembic upgrade head
