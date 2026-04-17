@@ -35,7 +35,7 @@ async def wait_until_active(
                 return
             if resp.status == "REVOKED":
                 logger.error("Node has been revoked — exiting")
-                sys.exit(1)
+                sys.exit(0)
             logger.info("Status is %s — waiting for admin to activate...", resp.status)
         except Exception as exc:
             logger.warning("Could not reach controller: %s", exc)
@@ -50,7 +50,7 @@ async def heartbeat_loop(client: ControllerClient, node: NodeState, interval: in
             logger.debug("Heartbeat ok — status=%s", resp.status)
             if resp.status == "REVOKED":
                 logger.error("Node has been revoked — exiting")
-                sys.exit(1)
+                sys.exit(0)
         except Exception as exc:
             logger.warning("Heartbeat failed: %s", exc)
 

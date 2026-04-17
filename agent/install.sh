@@ -154,13 +154,19 @@ EnvironmentFile=/etc/weave/agent.env
 ExecStart=/usr/local/bin/weave
 Restart=on-failure
 RestartSec=10
-ExecStartPre=/bin/sleep 2
+# Never give up restarting — network outages can be arbitrarily long
+StartLimitIntervalSec=0
+# Don't wait 90s for graceful shutdown; our SIGTERM handler is fast
+TimeoutStopSec=15
 
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=weave
 
 User=root
+# Basic hardening (WireGuard requires root/CAP_NET_ADMIN so full sandboxing isn't possible)
+PrivateTmp=yes
+ProtectHome=yes
 
 [Install]
 WantedBy=multi-user.target
