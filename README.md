@@ -1,6 +1,6 @@
 # Weave
 
-A WireGuard-based SD-WAN control plane. The controller handles orchestration, NAT traversal, and peer distribution. Edge nodes run a lightweight agent that manages WireGuard automatically.
+A WireGuard-based SD-WAN control plane with FRR-powered BGP route reflection and BFD-assisted failure detection. The controller handles orchestration, NAT traversal, peer distribution, and dynamic routing across the overlay. Edge nodes run a lightweight agent that manages WireGuard automatically and applies FRR configuration when routing is enabled.
 
 ## Architecture
 
