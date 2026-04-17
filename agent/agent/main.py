@@ -55,6 +55,9 @@ async def heartbeat_loop(client: ControllerClient, node: NodeState, interval: in
             logger.warning("Heartbeat failed: %s", exc)
 
 
+WS_RECONNECT_INTERVAL = 5  # seconds between WebSocket reconnect attempts
+
+
 async def peer_loop(
     client: ControllerClient,
     node: NodeState,
@@ -66,7 +69,7 @@ async def peer_loop(
     The controller pushes a new peer list whenever topology changes (node
     joins, leaves, goes offline, etc.).  If the WebSocket drops, we fall
     back to a single HTTP poll and then retry the connection after
-    PEER_POLL_INTERVAL seconds.
+    WS_RECONNECT_INTERVAL seconds.
     """
     last_sig: frozenset = frozenset()
 
@@ -101,7 +104,7 @@ async def peer_loop(
             except Exception as poll_exc:
                 logger.warning("Peer poll failed: %s", poll_exc)
 
-        await asyncio.sleep(settings.PEER_POLL_INTERVAL)
+        await asyncio.sleep(WS_RECONNECT_INTERVAL)
 
 
 async def run() -> None:
