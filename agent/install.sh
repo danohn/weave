@@ -165,8 +165,8 @@ SyslogIdentifier=weave
 
 User=root
 # Basic hardening (WireGuard requires root/CAP_NET_ADMIN so full sandboxing isn't possible)
+# Note: ProtectHome cannot be used — uv stores the tool venv under /root/.local/
 PrivateTmp=yes
-ProtectHome=yes
 
 [Install]
 WantedBy=multi-user.target
