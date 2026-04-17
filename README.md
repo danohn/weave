@@ -95,14 +95,16 @@ curl -s -X POST http://<controller-host>:8005/api/v1/auth/tokens \
 Then on the new node (as root), run:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/danohn/weave/refs/heads/main/agent/install.sh \
+REF=dddb55ed51fa1337b04e1d4535f42238934050db
+curl -fsSL "https://raw.githubusercontent.com/danohn/weave/${REF}/agent/install.sh" \
   | bash -s -- \
       --controller-url https://<controller-host> \
       --node-name <name> \
-      --preauth-token <token>
+      --preauth-token <token> \
+      --repo-ref "${REF}"
 ```
 
-The script installs the agent directly from GitHub — no local repo checkout required. The node registers, auto-activates using the token, brings up WireGuard, and starts running as a systemd service.
+The script installs the agent directly from GitHub — no local repo checkout required. Pinning both the script URL and `--repo-ref` to the same commit SHA (or release tag) keeps the bootstrap script, installed package, and systemd unit on the same revision. The node registers, auto-activates using the token, brings up WireGuard, and starts running as a systemd service.
 
 Useful commands on an edge node:
 

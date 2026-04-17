@@ -2,7 +2,8 @@
 # Install the Weave agent on a Debian/Ubuntu host.
 # Designed to be run directly via curl — no local repo checkout required:
 #
-#   curl -fsSL https://raw.githubusercontent.com/danohn/weave/refs/heads/main/agent/install.sh \
+#   REF=dddb55ed51fa1337b04e1d4535f42238934050db
+#   curl -fsSL "https://raw.githubusercontent.com/danohn/weave/${REF}/agent/install.sh" \
 #     | bash -s -- --controller-url URL [OPTIONS]
 #
 set -euo pipefail
@@ -43,6 +44,7 @@ Optional:
   --interface IFACE       WireGuard interface name (default: wg0)
   --heartbeat-interval N  Heartbeat interval in seconds (default: 30)
   --peer-poll-interval N  Peer poll interval in seconds (default: 60)
+  --repo-ref REF          Git ref for the agent package and service file (default: main)
 EOF
   exit 1
 }
@@ -60,6 +62,7 @@ ENDPOINT_PORT="51820"
 INTERFACE="wg0"
 HEARTBEAT_INTERVAL="30"
 PEER_POLL_INTERVAL="60"
+REPO_REF="${WEAVE_REPO_REF:-main}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -70,6 +73,7 @@ while [[ $# -gt 0 ]]; do
     --interface)          INTERFACE="$2";           shift 2 ;;
     --heartbeat-interval) HEARTBEAT_INTERVAL="$2"; shift 2 ;;
     --peer-poll-interval) PEER_POLL_INTERVAL="$2"; shift 2 ;;
+    --repo-ref)           REPO_REF="$2";            shift 2 ;;
     *) echo "Unknown option: $1"; usage ;;
   esac
 done
@@ -104,6 +108,7 @@ log "─────────────────────────
 info "Node:       $NODE_NAME"
 info "Controller: $CONTROLLER_URL"
 info "Interface:  $INTERFACE  (port $ENDPOINT_PORT)"
+info "Repo ref:   $REPO_REF"
 log ""
 
 step "Installing system dependencies (wireguard-tools, frr, git)..."
@@ -133,7 +138,7 @@ fi
 
 step "Installing weave agent from GitHub..."
 UV_TOOL_BIN_DIR=/usr/local/bin uv tool install --python 3.12 \
-  "git+https://github.com/danohn/weave#subdirectory=agent" >> "$LOG_FILE" 2>&1
+  "git+https://github.com/danohn/weave@${REPO_REF}#subdirectory=agent" >> "$LOG_FILE" 2>&1
 
 step "Writing configuration..."
 mkdir -p /etc/weave
@@ -151,32 +156,8 @@ chmod 700 /etc/weave
 chmod 600 /etc/weave/agent.env
 
 step "Installing systemd service..."
-cat > /etc/systemd/system/weave.service <<'UNIT'
-[Unit]
-Description=Weave Agent
-Documentation=https://github.com/danohn/weave
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-EnvironmentFile=/etc/weave/agent.env
-ExecStart=/usr/local/bin/weave
-Restart=on-failure
-RestartSec=10
-StartLimitIntervalSec=0
-TimeoutStopSec=15
-
-StandardOutput=journal
-StandardError=journal
-SyslogIdentifier=weave
-
-User=root
-PrivateTmp=yes
-
-[Install]
-WantedBy=multi-user.target
-UNIT
+SERVICE_URL="https://raw.githubusercontent.com/danohn/weave/${REPO_REF}/agent/weave.service"
+curl -fsSL "$SERVICE_URL" -o /etc/systemd/system/weave.service >> "$LOG_FILE" 2>&1
 
 systemctl daemon-reload       >> "$LOG_FILE" 2>&1
 systemctl enable --now weave  >> "$LOG_FILE" 2>&1
