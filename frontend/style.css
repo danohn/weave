@@ -523,6 +523,16 @@ td.td-subnet  { white-space: nowrap; }
 }
 .modal-field input:focus { border-color: var(--black); }
 
+.token-reveal-row {
+  display: flex;
+  gap: 8px;
+}
+.token-reveal-row input {
+  flex: 1;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 11px;
+}
+
 .modal-footer {
   display: flex;
   justify-content: flex-end;

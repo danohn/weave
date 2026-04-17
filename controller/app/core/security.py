@@ -1,3 +1,4 @@
+import hashlib
 import secrets
 
 from fastapi import Depends, HTTPException, status
@@ -14,6 +15,10 @@ bearer_scheme = HTTPBearer()
 
 def generate_token() -> str:
     return secrets.token_urlsafe(32)
+
+
+def hash_token(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
 
 
 async def get_current_node(

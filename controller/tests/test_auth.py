@@ -38,11 +38,13 @@ def node_payload(**overrides) -> dict:
 async def test_create_token(client: AsyncClient):
     data = await create_token(client, label="batch-2025-04")
     assert "id" in data
-    assert "token" in data
+    assert "token" in data          # plaintext returned once at creation
+    assert "token_prefix" in data
     assert data["label"] == "batch-2025-04"
     assert data["used_at"] is None
     assert data["used_by_node_id"] is None
     assert len(data["token"]) > 20
+    assert data["token"].startswith(data["token_prefix"])
 
 
 async def test_create_token_requires_admin(client: AsyncClient):
@@ -63,7 +65,13 @@ async def test_list_tokens(client: AsyncClient):
         headers={"Authorization": f"Bearer {ADMIN_TOKEN}"},
     )
     assert resp.status_code == 200
-    assert len(resp.json()) == 2
+    tokens = resp.json()
+    assert len(tokens) == 2
+    # List response must not expose the plaintext token
+    for t in tokens:
+        assert "token" not in t
+        assert "token_prefix" in t
+        assert len(t["token_prefix"]) == 8
 
 
 async def test_list_tokens_requires_admin(client: AsyncClient):

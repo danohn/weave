@@ -146,6 +146,24 @@
   </div>
 </div>
 
+<!-- ── Reveal token modal ─────────────────────────────────────────────── -->
+<div class="overlay" id="reveal-overlay">
+  <div class="modal">
+    <div class="modal-title">Token Created</div>
+    <div class="modal-desc">Copy this token now — <strong>it won't be shown again.</strong></div>
+    <div class="modal-field">
+      <label>Token</label>
+      <div class="token-reveal-row">
+        <input id="reveal-token-inp" type="text" readonly spellcheck="false" autocomplete="off">
+        <button class="btn btn-ghost" id="reveal-copy-btn">Copy</button>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-primary" id="reveal-done-btn">Done</button>
+    </div>
+  </div>
+</div>
+
 <!-- ── Edit subnet modal ──────────────────────────────────────────────── -->
 <div class="overlay" id="subnet-overlay">
   <div class="modal">

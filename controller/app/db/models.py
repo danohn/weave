@@ -51,7 +51,8 @@ class PreAuthToken(Base):
     id: Mapped[str] = mapped_column(
         String, primary_key=True, default=lambda: str(uuid.uuid4())
     )
-    token: Mapped[str] = mapped_column(String, unique=True, nullable=False, index=True)
+    token_hash: Mapped[str] = mapped_column(String, unique=True, nullable=False, index=True)
+    token_prefix: Mapped[str] = mapped_column(String, nullable=False)
     label: Mapped[str] = mapped_column(String, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()

@@ -35,6 +35,12 @@ const tokenLabelInp  = get('token-label-inp');
 const tokenCancelBtn = get('token-cancel');
 const tokenCreateBtn = get('token-create');
 
+// Reveal-token modal
+const revealOverlay  = get('reveal-overlay');
+const revealTokenInp = get('reveal-token-inp');
+const revealCopyBtn  = get('reveal-copy-btn');
+const revealDoneBtn  = get('reveal-done-btn');
+
 // ── Persistence ────────────────────────────────────────────────────────────
 (function loadConfig() {
   const savedUrl   = localStorage.getItem('weave_url')   || '';
@@ -268,10 +274,7 @@ function renderTokens() {
     return `<tr>
       <td class="td-name">${e(t.label)}</td>
       <td>
-        <div class="token-cell">
-          <span class="token-str" title="${e(t.token)}">${e(t.token)}</span>
-          <button class="copy-btn" onclick="copyToken('${e(t.token)}')">Copy</button>
-        </div>
+        <span class="token-str">${e(t.token_prefix)}••••••••••••••••</span>
       </td>
       <td class="ts-warm">${relTime(t.created_at)}</td>
       <td>${statusBadge}</td>
@@ -447,14 +450,28 @@ tokenCreateBtn.addEventListener('click', async () => {
   if (!label) { tokenLabelInp.focus(); return; }
   tokenCreateBtn.disabled = true;
   try {
-    await createToken(label);
+    const data = await createToken(label);
     tokenOverlay.classList.remove('open');
-    toast(`Token "${label}" created`);
+    revealTokenInp.value = data.token;
+    revealOverlay.classList.add('open');
+    setTimeout(() => revealTokenInp.select(), 50);
   } catch (err) {
     toast(err.message, 'err');
   } finally {
     tokenCreateBtn.disabled = false;
   }
+});
+
+// ── Reveal-token modal ─────────────────────────────────────────────────────
+revealCopyBtn.addEventListener('click', () => {
+  navigator.clipboard.writeText(revealTokenInp.value)
+    .then(() => toast('Token copied'))
+    .catch(() => { revealTokenInp.select(); toast('Select and copy manually', 'err'); });
+});
+
+revealDoneBtn.addEventListener('click', () => {
+  revealOverlay.classList.remove('open');
+  revealTokenInp.value = '';
 });
 
 // ── Toast ──────────────────────────────────────────────────────────────────
