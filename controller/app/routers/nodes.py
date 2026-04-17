@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import PlainTextResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.agent_ws import broadcast_peers
@@ -82,7 +83,7 @@ async def go_offline(
         await broadcast_peers(session)
 
 
-@router.get("/{node_id}/frr-config")
+@router.get("/{node_id}/frr-config", response_class=PlainTextResponse)
 async def frr_config(
     node_id: str,
     current_node: Node = Depends(get_current_node),

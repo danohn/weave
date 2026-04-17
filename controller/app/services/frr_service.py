@@ -65,7 +65,6 @@ async def remove_neighbor(node: Node) -> None:
 def generate_node_config(node: Node) -> str:
     """Generate the FRR config for an edge node (fetched via GET /frr-config)."""
     lines = [
-        "frr version 9.1",
         "frr defaults traditional",
         f"hostname {node.name}",
         "log syslog informational",

@@ -54,7 +54,6 @@ usermod -aG frrvty root 2>/dev/null || true
 # Neighbors are added/removed dynamically via vtysh as nodes activate/revoke —
 # so the base config only contains the peer-group definition, no neighbor lines.
 cat > /etc/frr/frr.conf <<FRREOF
-frr version 9.1
 frr defaults traditional
 hostname weave-rr
 log syslog informational
