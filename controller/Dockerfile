@@ -14,4 +14,4 @@ COPY alembic.ini ./
 EXPOSE 8000
 
 CMD alembic upgrade head && \
-    uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips='*'
+    uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips='*' --log-level info
