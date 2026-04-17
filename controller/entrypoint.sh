@@ -38,7 +38,8 @@ echo "[wg] Interface $WG_INTERFACE up — ${CONTROLLER_VPN_IP}/24 port ${CONTROL
 # ── FRR ──────────────────────────────────────────────────────────────────────
 # Enable required daemons
 if [[ -f /etc/frr/daemons ]]; then
-  sed -i 's/^bgpd=no/bgpd=yes/' /etc/frr/daemons
+  sed -i 's/^zebra=no/zebra=yes/' /etc/frr/daemons
+  sed -i 's/^bgpd=no/bgpd=yes/'  /etc/frr/daemons
 fi
 
 # Integrated config — one frr.conf for all daemons
@@ -84,9 +85,9 @@ chmod 640 /etc/frr/frr.conf
 # restarts. Logs flow to PID 1 so they appear in docker logs.
 /usr/lib/frr/watchfrr \
   --log-level informational \
-  bgpd \
+  zebra bgpd \
   >> /proc/1/fd/1 2>> /proc/1/fd/2 &
-echo "[frr] watchfrr started (pid $!) — supervising bgpd"
+echo "[frr] watchfrr started (pid $!) — supervising zebra + bgpd"
 
 # Give FRR time to open its vtysh socket before the API tries to add neighbors
 sleep 3
