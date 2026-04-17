@@ -2,6 +2,17 @@
 
 A WireGuard-based SD-WAN control plane. The controller handles orchestration, NAT traversal, and peer distribution. Edge nodes run a lightweight agent that manages WireGuard automatically.
 
+## Architecture
+
+Weave has four moving parts:
+
+- **Controller**: FastAPI service that stores node state, allocates VPN IPs, validates pre-auth tokens, and serves peer lists to agents.
+- **Agent**: lightweight daemon installed on each edge node. It registers with the controller, maintains WireGuard state, heartbeats periodically, and applies FRR configuration when present.
+- **Frontend**: static admin dashboard served by nginx. It talks to the controller over the same origin using the REST API and admin WebSocket.
+- **Reverse proxy**: Traefik routes browser/API traffic to nginx or the controller based on path, while WireGuard UDP traffic goes directly to the controller host on port `51820`.
+
+At runtime, the controller acts as the source of truth. Agents register once, receive a node auth token plus VPN IP, then keep their local WireGuard and FRR state in sync from controller-provided peer updates.
+
 ## Repository structure
 
 ```
@@ -12,6 +23,17 @@ weave/
 ├── docker-compose.yml
 └── nginx.conf
 ```
+
+## Getting started
+
+The shortest path to a working deployment is:
+
+1. Start the controller stack with Docker and Traefik.
+2. Generate a pre-auth token from the controller.
+3. Bootstrap an edge node with the install script.
+4. Confirm the node appears in the dashboard and `wg show` lists peers.
+
+If you just want to develop locally, use the local development flow below. If you want a real deployment, start with the production section and then continue to **Installing an edge node**.
 
 ## Quick start
 
@@ -27,6 +49,11 @@ ADMIN_TOKEN=secret uv run uvicorn app.main:app --reload
 
 ### Production (Docker + Traefik)
 
+There are two supported deployment modes:
+
+- **Existing Traefik**: use [`docker-compose.yml`](/Users/daniel/Code/weave/docker-compose.yml) when you already run a shared Traefik instance and can attach Weave to its Docker network.
+- **Bundled Traefik**: use [`docker-compose.with-traefik.yml`](/Users/daniel/Code/weave/docker-compose.with-traefik.yml) when you want a self-contained stack for evaluation or a simple standalone deployment.
+
 Copy `.env.example` to `.env` and fill in your values:
 
 ```bash
@@ -36,16 +63,30 @@ cp .env.example .env
 ```ini
 ADMIN_TOKEN=your-secret-token
 WEAVE_DOMAIN=weave.example.com
+TRAEFIK_NETWORK=backend               # existing-Traefik mode only
 TRAEFIK_MIDDLEWARE=chain-internal@file   # optional
 ```
 
-Then start the stack:
+#### Option A: Existing Traefik
+
+Start the default stack:
 
 ```bash
 docker compose up -d --build
 ```
 
-The dashboard and API will be available at `https://<WEAVE_DOMAIN>`. The stack expects an external Docker network named `backend` and a running Traefik instance attached to it.
+The dashboard and API will be available at `https://<WEAVE_DOMAIN>`. This mode expects an external Docker network shared with your existing Traefik instance.
+Set `TRAEFIK_NETWORK` to the Docker network name your Traefik container uses.
+
+#### Option B: Bundled Traefik
+
+Start the self-contained stack:
+
+```bash
+docker compose -f docker-compose.with-traefik.yml up -d --build
+```
+
+In this mode Traefik is started as part of the stack and listens on port `80`. Point DNS or your local hosts file at the Docker host so `http://<WEAVE_DOMAIN>` resolves there. Add TLS and certificate resolver settings to the Traefik service if you want HTTPS in this mode.
 
 ## Configuration
 
@@ -55,6 +96,7 @@ The dashboard and API will be available at `https://<WEAVE_DOMAIN>`. The stack e
 |---|---|---|
 | `ADMIN_TOKEN` | Yes | Bearer token for all admin endpoints |
 | `WEAVE_DOMAIN` | Yes | Domain Traefik routes to the dashboard and API |
+| `TRAEFIK_NETWORK` | Existing Traefik only | Docker network shared with your existing Traefik container |
 | `TRAEFIK_MIDDLEWARE` | No | Traefik middleware chain to apply (e.g. `chain-internal@file`) |
 | `VPN_SUBNET` | No | Overlay subnet to allocate VPN IPs from (default: `10.0.0.0/24`) |
 
@@ -85,7 +127,7 @@ uv run pytest -v
 From the controller host (or anywhere with admin access), generate a pre-auth token for the new node:
 
 ```bash
-curl -s -X POST http://<controller-host>:8005/api/v1/auth/tokens \
+curl -s -X POST https://<controller-host>/api/v1/auth/tokens \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"label": "sdn-3"}'
@@ -149,6 +191,26 @@ iptables -A INPUT -p udp --dport 51820 -j ACCEPT
 ```
 
 Cloud providers (AWS, GCP, Hetzner, etc.) also require an inbound rule in their security group / firewall console for UDP 51820.
+
+---
+
+## Troubleshooting
+
+### API returns HTML instead of JSON
+
+If `/health` or `/api/...` returns the dashboard HTML instead of JSON, the request is reaching the frontend nginx container rather than the controller. Check that the controller is up and that your reverse proxy is routing `/api`, `/ws`, and `/health` to the API service.
+
+### Dashboard loads but live updates fail
+
+If the dashboard renders but stops updating, check the browser console and confirm `GET /ws` is reaching the controller. A failed WebSocket upgrade usually means the controller is down or the reverse proxy is not forwarding WebSocket traffic correctly.
+
+### Nodes are ACTIVE but traffic does not pass
+
+If `wg show` lists peers but pings fail, verify inbound UDP 51820 is allowed on every node and in any cloud firewall or security group.
+
+### Controller fails during startup after an upgrade
+
+Check `docker compose logs controller` for Alembic errors. If a migration partially applied, the schema may be ahead of `alembic_version`; fix the database state before retrying the container.
 
 ---
 
@@ -219,7 +281,7 @@ curl -s -X POST http://localhost:8000/api/v1/nodes/<id>/heartbeat \
 
 #### `GET /api/v1/nodes/{id}/peers`
 
-Returns all `ACTIVE` peers visible to this node (excludes self, `PENDING`, `OFFLINE`, and `REVOKED` nodes). The `preferred_endpoint` is always the IP the controller observed the peer connecting from.
+Returns all visible peers for this node (excludes self, `PENDING`, and `REVOKED` nodes). `OFFLINE` nodes are still included so their WireGuard configuration can recover quickly when they come back. The `preferred_endpoint` is always the IP the controller observed the peer connecting from.
 
 ```bash
 curl -s http://localhost:8000/api/v1/nodes/<id>/peers \
@@ -287,7 +349,7 @@ POST /register (no token)            ->  PENDING  (requires REQUIRE_PREAUTH=fals
                           clean shutdown /     \ no heartbeat for 75s
                      (agent sends SIGTERM)       (crash or network loss)
                                         /         \
-                                     OFFLINE  -- excluded from peer lists
+                                     OFFLINE  -- kept in peer lists for fast recovery
                                             |
                               heartbeat received
                                             |

@@ -1,4 +1,19 @@
 services:
+  traefik:
+    image: traefik:v3.1
+    container_name: weave-traefik
+    restart: unless-stopped
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+    ports:
+      - "80:80"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - backend
+
   nginx:
     image: nginx:alpine
     container_name: weave-ui
@@ -10,8 +25,9 @@ services:
       - backend
     labels:
       - "traefik.enable=true"
-      - "traefik.docker.network=${TRAEFIK_NETWORK:?TRAEFIK_NETWORK env var must be set}"
+      - "traefik.docker.network=weave_backend"
       - "traefik.http.routers.weave-ui.rule=Host(`${WEAVE_DOMAIN:?WEAVE_DOMAIN env var must be set}`)"
+      - "traefik.http.routers.weave-ui.entrypoints=web"
       - "traefik.http.routers.weave-ui.priority=10"
       - "traefik.http.routers.weave-ui.service=weave-ui"
       - "traefik.http.services.weave-ui.loadBalancer.server.port=80"
@@ -22,11 +38,11 @@ services:
     container_name: weave-controller
     restart: unless-stopped
     cap_add:
-      - NET_ADMIN    # required for WireGuard interface management
-      - SYS_MODULE   # required to load the wireguard kernel module if not already loaded
-      - SYS_ADMIN    # required for FRR BGP/BFD privilege initialisation (cap_set_proc)
+      - NET_ADMIN
+      - SYS_MODULE
+      - SYS_ADMIN
     ports:
-      - "51820:51820/udp"   # WireGuard — edge agents connect here directly (not via Traefik)
+      - "51820:51820/udp"
     volumes:
       - weave_db:/app/data
     networks:
@@ -35,15 +51,13 @@ services:
       DATABASE_URL: "sqlite+aiosqlite:////app/data/weave.db"
       ADMIN_TOKEN: "${ADMIN_TOKEN:?ADMIN_TOKEN env var must be set}"
       VPN_SUBNET: "${VPN_SUBNET:-10.0.0.0/24}"
-      # Passed through so the controller can advertise itself as a WireGuard
-      # peer — agents already connect to this domain for the API, so the same
-      # hostname works for WireGuard (UDP 51820).
       WEAVE_DOMAIN: "${WEAVE_DOMAIN:?WEAVE_DOMAIN env var must be set}"
       CONTROLLER_ENDPOINT_PORT: "${CONTROLLER_ENDPOINT_PORT:-51820}"
     labels:
       - "traefik.enable=true"
-      - "traefik.docker.network=${TRAEFIK_NETWORK:?TRAEFIK_NETWORK env var must be set}"
+      - "traefik.docker.network=weave_backend"
       - "traefik.http.routers.weave-api.rule=Host(`${WEAVE_DOMAIN}`) && (PathPrefix(`/api`) || PathPrefix(`/ws`) || PathPrefix(`/health`))"
+      - "traefik.http.routers.weave-api.entrypoints=web"
       - "traefik.http.routers.weave-api.priority=100"
       - "traefik.http.routers.weave-api.service=weave-api"
       - "traefik.http.services.weave-api.loadBalancer.server.port=8000"
@@ -54,5 +68,3 @@ volumes:
 
 networks:
   backend:
-    external: true
-    name: ${TRAEFIK_NETWORK:?TRAEFIK_NETWORK env var must be set}
