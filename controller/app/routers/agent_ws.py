@@ -45,6 +45,7 @@ async def agent_ws(websocket: WebSocket, node_id: str) -> None:
             return
 
         await agent_manager.connect(node_id, websocket)
+        logger.info("Agent %s connected", node_id)
         try:
             # Push current peer list immediately on connect
             await agent_manager.send_peers(node_id, session)
