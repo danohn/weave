@@ -65,6 +65,7 @@ async def lifespan(app: FastAPI):
         logger.info("Syncing %d node(s) to WireGuard and FRR on startup", len(existing_nodes))
         await wireguard_service.sync_peers(existing_nodes)
         for node in existing_nodes:
+            await frr_service.add_bfd_peer(node)   # register BFD before BGP
             await frr_service.add_neighbor(node)
 
     task = asyncio.create_task(_expiry_loop())

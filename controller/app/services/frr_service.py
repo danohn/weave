@@ -32,6 +32,42 @@ async def _vtysh(*commands: str) -> None:
         raise RuntimeError(stderr.decode().strip())
 
 
+async def add_bfd_peer(node: Node) -> None:
+    """Pre-register a BFD peer on the route reflector.
+
+    By explicitly creating the BFD session before BGP connects, bfdd can
+    complete the handshake independently. When bgpd then checks BFD status
+    (on its first connect retry) it will see Up rather than Down, avoiding
+    the Idle deadlock.
+    """
+    try:
+        await _vtysh(
+            "configure terminal",
+            "bfd",
+            f"peer {node.vpn_ip} multihop local-address {settings.CONTROLLER_VPN_IP}",
+            "end",
+            "write memory",
+        )
+        logger.info("BFD: registered peer %s (%s)", node.name, node.vpn_ip)
+    except Exception as exc:
+        logger.warning("BFD: could not register peer %s: %s", node.name, exc)
+
+
+async def remove_bfd_peer(node: Node) -> None:
+    """Remove a node's BFD peer entry from the route reflector."""
+    try:
+        await _vtysh(
+            "configure terminal",
+            "bfd",
+            f"no peer {node.vpn_ip} multihop local-address {settings.CONTROLLER_VPN_IP}",
+            "end",
+            "write memory",
+        )
+        logger.info("BFD: removed peer %s (%s)", node.name, node.vpn_ip)
+    except Exception as exc:
+        logger.warning("BFD: could not remove peer %s: %s", node.name, exc)
+
+
 async def add_neighbor(node: Node) -> None:
     """Add a node as a BGP neighbor on the route reflector."""
     try:
@@ -69,12 +105,20 @@ def generate_node_config(node: Node) -> str:
         f"hostname {node.name}",
         "log syslog informational",
         "!",
+        # Pre-register the BFD session explicitly so bfdd can establish the
+        # handshake with the controller before bgpd tries to connect.
+        # This avoids the Idle deadlock caused by bgpd waiting for BFD=Up
+        # when BFD hasn't yet been negotiated.
+        "bfd",
+        f" peer {settings.CONTROLLER_VPN_IP} multihop local-address {node.vpn_ip}",
+        "!",
         f"router bgp {BGP_ASN}",
         f" bgp router-id {node.vpn_ip}",
         " no bgp default ipv4-unicast",
         " !",
         f" neighbor {settings.CONTROLLER_VPN_IP} remote-as {BGP_ASN}",
         f" neighbor {settings.CONTROLLER_VPN_IP} update-source wg0",
+        f" neighbor {settings.CONTROLLER_VPN_IP} bfd",
         " !",
         " address-family ipv4 unicast",
         f"  neighbor {settings.CONTROLLER_VPN_IP} activate",

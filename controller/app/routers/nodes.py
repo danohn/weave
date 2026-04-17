@@ -20,15 +20,17 @@ router = APIRouter(prefix="/api/v1/nodes", tags=["nodes"])
 
 
 async def _on_node_activated(node: Node) -> None:
-    """Add the node to the controller's WireGuard and BGP config."""
+    """Add the node to the controller's WireGuard, BFD, and BGP config."""
     await wireguard_service.add_peer(node)
-    await frr_service.add_neighbor(node)
+    await frr_service.add_bfd_peer(node)   # must precede add_neighbor so BFD
+    await frr_service.add_neighbor(node)   # is Up before bgpd checks it
 
 
 async def _on_node_removed(node: Node) -> None:
-    """Remove the node from the controller's WireGuard and BGP config."""
+    """Remove the node from the controller's WireGuard, BFD, and BGP config."""
     await wireguard_service.remove_peer(node)
     await frr_service.remove_neighbor(node)
+    await frr_service.remove_bfd_peer(node)
 
 
 @router.post("/register", response_model=NodeRegisterResponse, status_code=201)

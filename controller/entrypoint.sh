@@ -40,6 +40,7 @@ echo "[wg] Interface $WG_INTERFACE up — ${CONTROLLER_VPN_IP}/24 port ${CONTROL
 if [[ -f /etc/frr/daemons ]]; then
   sed -i 's/^zebra=no/zebra=yes/' /etc/frr/daemons
   sed -i 's/^bgpd=no/bgpd=yes/'  /etc/frr/daemons
+  sed -i 's/^bfdd=no/bfdd=yes/'  /etc/frr/daemons
 fi
 
 # Integrated config — one frr.conf for all daemons
@@ -58,6 +59,8 @@ frr defaults traditional
 hostname weave-rr
 log syslog informational
 !
+bfd
+!
 router bgp 65000
  bgp router-id ${CONTROLLER_VPN_IP}
  no bgp default ipv4-unicast
@@ -67,6 +70,7 @@ router bgp 65000
  neighbor NODES remote-as 65000
  neighbor NODES update-source ${WG_INTERFACE}
  neighbor NODES route-reflector-client
+ neighbor NODES bfd
  neighbor NODES timers connect 10
  !
  address-family ipv4 unicast
@@ -85,9 +89,9 @@ chmod 640 /etc/frr/frr.conf
 # restarts. Logs flow to PID 1 so they appear in docker logs.
 /usr/lib/frr/watchfrr \
   --log-level informational \
-  zebra bgpd \
+  zebra bgpd bfdd \
   >> /proc/1/fd/1 2>> /proc/1/fd/2 &
-echo "[frr] watchfrr started (pid $!) — supervising zebra + bgpd"
+echo "[frr] watchfrr started (pid $!) — supervising zebra + bgpd + bfdd"
 
 # Give FRR time to open its vtysh socket before the API tries to add neighbors
 sleep 3
