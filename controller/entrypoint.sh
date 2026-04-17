@@ -58,8 +58,6 @@ frr defaults traditional
 hostname weave-rr
 log syslog informational
 !
-bfd
-!
 router bgp 65000
  bgp router-id ${CONTROLLER_VPN_IP}
  no bgp default ipv4-unicast
@@ -69,7 +67,7 @@ router bgp 65000
  neighbor NODES remote-as 65000
  neighbor NODES update-source ${WG_INTERFACE}
  neighbor NODES route-reflector-client
- neighbor NODES bfd
+ neighbor NODES timers connect 10
  !
  address-family ipv4 unicast
   neighbor NODES activate
@@ -82,27 +80,19 @@ FRREOF
 chown frr:frr /etc/frr/frr.conf
 chmod 640 /etc/frr/frr.conf
 
-# Start daemons in the background without daemonizing (--daemon forks and can
-# misbehave in Docker without a proper init). Run in background subshells so
-# errors are visible in docker logs. Sockets go to /run/frr/ per FRR build config.
-if /usr/lib/frr/bgpd \
-  --config_file /etc/frr/frr.conf \
-  --pid_file /run/frr/bgpd.pid \
+# Start bgpd and bfdd under watchfrr so they are automatically restarted
+# if they crash. watchfrr itself runs in the background and survives bgpd
+# restarts. Logs flow to PID 1 so they appear in docker logs.
+if /usr/lib/frr/watchfrr \
+  --daemon \
+  -F traditional \
+  --log-level informational \
+  bgpd bfdd \
   >> /proc/1/fd/1 2>> /proc/1/fd/2 &
 then
-  echo "[frr] bgpd started (pid $!)"
+  echo "[frr] watchfrr started (pid $!) — supervising bgpd + bfdd"
 else
-  echo "[frr] bgpd failed to start (non-fatal)"
-fi
-
-if /usr/lib/frr/bfdd \
-  --config_file /etc/frr/frr.conf \
-  --pid_file /run/frr/bfdd.pid \
-  >> /proc/1/fd/1 2>> /proc/1/fd/2 &
-then
-  echo "[frr] bfdd started (pid $!)"
-else
-  echo "[frr] bfdd failed to start (non-fatal)"
+  echo "[frr] watchfrr failed to start (non-fatal)"
 fi
 
 # Give FRR time to open its vtysh socket before the API tries to add neighbors

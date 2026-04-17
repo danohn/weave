@@ -69,15 +69,15 @@ def generate_node_config(node: Node) -> str:
         f"hostname {node.name}",
         "log syslog informational",
         "!",
-        "bfd",
-        "!",
         f"router bgp {BGP_ASN}",
         f" bgp router-id {node.vpn_ip}",
         " no bgp default ipv4-unicast",
+        # Advertise site subnets even if not locally routed — the prefix exists
+        # behind the LAN, not on this node's interfaces directly.
+        " no bgp network import-check",
         " !",
         f" neighbor {settings.CONTROLLER_VPN_IP} remote-as {BGP_ASN}",
         f" neighbor {settings.CONTROLLER_VPN_IP} update-source wg0",
-        f" neighbor {settings.CONTROLLER_VPN_IP} bfd",
         " !",
         " address-family ipv4 unicast",
         f"  neighbor {settings.CONTROLLER_VPN_IP} activate",
