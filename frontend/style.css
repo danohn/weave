@@ -173,12 +173,15 @@ main {
 /* ── Stats grid ───────────────────────────────────────────── */
 .stats {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 10px;
   margin-bottom: 20px;
 }
 
-@media (max-width: 600px) {
+@media (max-width: 700px) {
+  .stats { grid-template-columns: repeat(3, 1fr); }
+}
+@media (max-width: 450px) {
   .stats { grid-template-columns: repeat(2, 1fr); }
 }
 
@@ -208,6 +211,7 @@ main {
 .stat-card.live  .stat-num { color: var(--green-pip); }
 .stat-card.dim   .stat-num { color: var(--red-pip); }
 .stat-card.muted .stat-num { color: var(--amber-pip); }
+.stat-card.faded .stat-num { color: var(--gray-300); }
 
 /* ── Section header ───────────────────────────────────────── */
 .section-head {
@@ -276,6 +280,34 @@ td.td-mono {
 }
 
 td.td-actions { text-align: right; white-space: nowrap; }
+td.td-subnet  { white-space: nowrap; }
+
+.subnet-pill {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 11px;
+  color: var(--gray-700);
+  background: var(--gray-100);
+  border-radius: 4px;
+  padding: 2px 6px;
+}
+
+.td-empty { color: var(--gray-300); }
+
+.edit-btn {
+  height: 20px;
+  padding: 0 7px;
+  font-size: 10px;
+  font-weight: 500;
+  font-family: var(--font);
+  border-radius: 3px;
+  border: 1px solid var(--gray-200);
+  background: var(--white);
+  color: var(--gray-500);
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+  margin-left: 4px;
+}
+.edit-btn:hover { background: var(--gray-100); color: var(--black); }
 
 /* ── Status badge ─────────────────────────────────────────── */
 .badge {

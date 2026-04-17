@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.security import generate_token
 from app.db.models import Node, NodeStatus, PreAuthToken
-from app.schemas.node import NodeRegisterRequest
+from app.schemas.node import NodeRegisterRequest, NodeUpdateRequest
 
 
 async def _allocate_vpn_ip(session: AsyncSession) -> str:
@@ -167,6 +167,17 @@ async def delete_node(node_id: str, session: AsyncSession) -> None:
         token.used_by_node_id = None
     await session.delete(node)
     await session.commit()
+
+
+async def update_node(node_id: str, data: NodeUpdateRequest, session: AsyncSession) -> Node:
+    result = await session.execute(select(Node).where(Node.id == node_id))
+    node = result.scalar_one_or_none()
+    if not node:
+        raise HTTPException(status_code=404, detail="Node not found")
+    node.site_subnet = data.site_subnet
+    await session.commit()
+    await session.refresh(node)
+    return node
 
 
 async def list_all_nodes(session: AsyncSession) -> list[Node]:

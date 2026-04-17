@@ -12,6 +12,7 @@ from app.schemas.node import (
     NodeAdminResponse,
     NodeRegisterRequest,
     NodeRegisterResponse,
+    NodeUpdateRequest,
 )
 from app.services import frr_service, node_service, wireguard_service
 
@@ -95,6 +96,23 @@ async def frr_config(
     if str(current_node.id) != node_id:
         raise HTTPException(status_code=403, detail="Token does not match node")
     return frr_service.generate_node_config(current_node)
+
+
+@router.patch("/{node_id}", response_model=NodeAdminResponse)
+async def update_node(
+    node_id: str,
+    data: NodeUpdateRequest,
+    session: AsyncSession = Depends(get_session),
+    _: None = Depends(require_admin),
+) -> NodeAdminResponse:
+    """Update editable node fields (currently: site_subnet)."""
+    node = await node_service.update_node(node_id, data, session)
+    # Re-apply WireGuard peer so AllowedIPs reflects the new site_subnet
+    if node.status in (NodeStatus.ACTIVE, NodeStatus.OFFLINE):
+        await wireguard_service.add_peer(node)
+    await broadcast_peers(session)
+    await broadcast_state(session)
+    return NodeAdminResponse.model_validate(node)
 
 
 @router.patch("/{node_id}/activate", response_model=NodeAdminResponse)

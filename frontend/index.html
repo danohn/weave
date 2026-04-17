@@ -57,6 +57,10 @@
       <div class="stat-label">Offline</div>
       <div class="stat-num" id="s-offline">—</div>
     </div>
+    <div class="stat-card faded">
+      <div class="stat-label">Revoked</div>
+      <div class="stat-num" id="s-revoked">—</div>
+    </div>
   </div>
 
   <!-- Nodes -->
@@ -73,6 +77,7 @@
           <th>Status</th>
           <th>VPN IP</th>
           <th>Endpoint</th>
+          <th>Site Subnet</th>
           <th>Last seen</th>
           <th>Actions</th>
         </tr>
@@ -136,6 +141,22 @@
     <div class="modal-footer">
       <button class="btn btn-ghost"   id="token-cancel">Cancel</button>
       <button class="btn btn-primary" id="token-create">Create</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Edit subnet modal ──────────────────────────────────────────────── -->
+<div class="overlay" id="subnet-overlay">
+  <div class="modal">
+    <div class="modal-title">Edit Site Subnet</div>
+    <div class="modal-desc">LAN subnet behind <strong id="subnet-node-name"></strong>. Agents will add this to WireGuard AllowedIPs and BGP will advertise it to peers. Clear the field to remove.</div>
+    <div class="modal-field">
+      <label for="subnet-inp">Subnet (CIDR)</label>
+      <input id="subnet-inp" type="text" placeholder="e.g. 192.168.1.0/24" autocomplete="off" spellcheck="false">
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost"   id="subnet-cancel">Cancel</button>
+      <button class="btn btn-primary" id="subnet-save">Save</button>
     </div>
   </div>
 </div>

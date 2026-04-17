@@ -36,6 +36,10 @@ class PeerResponse(BaseModel):
     site_subnet: Optional[str] = None   # LAN subnet to add to WireGuard AllowedIPs
 
 
+class NodeUpdateRequest(BaseModel):
+    site_subnet: Optional[str] = None   # pass null/None to clear
+
+
 class NodeAdminResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

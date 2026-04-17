@@ -73,11 +73,12 @@ async function api(path, opts = {}) {
 const fetchHealth  = ()      => api('/health');
 const fetchNodes   = ()      => api('/api/v1/nodes/');
 const fetchTokens  = ()      => api('/api/v1/auth/tokens');
-const activateNode = id      => api(`/api/v1/nodes/${id}/activate`, { method: 'PATCH' });
-const revokeNode   = id      => api(`/api/v1/nodes/${id}/revoke`,   { method: 'DELETE' });
-const deleteNode   = id      => api(`/api/v1/nodes/${id}`,          { method: 'DELETE' });
-const createToken  = label   => api('/api/v1/auth/tokens', { method: 'POST', body: JSON.stringify({ label }) });
-const deleteToken  = id      => api(`/api/v1/auth/tokens/${id}`,    { method: 'DELETE' });
+const activateNode  = id             => api(`/api/v1/nodes/${id}/activate`, { method: 'PATCH' });
+const revokeNode    = id             => api(`/api/v1/nodes/${id}/revoke`,   { method: 'DELETE' });
+const deleteNode    = id             => api(`/api/v1/nodes/${id}`,          { method: 'DELETE' });
+const updateSubnet  = (id, subnet)   => api(`/api/v1/nodes/${id}`,          { method: 'PATCH', body: JSON.stringify({ site_subnet: subnet || null }) });
+const createToken   = label          => api('/api/v1/auth/tokens', { method: 'POST', body: JSON.stringify({ label }) });
+const deleteToken   = id             => api(`/api/v1/auth/tokens/${id}`,    { method: 'DELETE' });
 
 // ── WebSocket ──────────────────────────────────────────────────────────────
 let ws = null;
@@ -163,6 +164,7 @@ function renderStats() {
   get('s-active').textContent  = n.filter(x => x.status === 'ACTIVE').length;
   get('s-pending').textContent = n.filter(x => x.status === 'PENDING').length;
   get('s-offline').textContent = n.filter(x => x.status === 'OFFLINE').length;
+  get('s-revoked').textContent = n.filter(x => x.status === 'REVOKED').length;
 }
 
 function renderTimestamp() {
@@ -195,11 +197,16 @@ function renderNodes() {
       ? `<button class="row-btn" onclick="doDelete('${e(n.id)}','${e(n.name)}')">Delete</button>`
       : '';
 
+    const subnetCell = n.site_subnet
+      ? `<span class="subnet-pill">${e(n.site_subnet)}</span> <button class="edit-btn" onclick="doEditSubnet('${e(n.id)}','${e(n.name)}','${e(n.site_subnet || '')}')">Edit</button>`
+      : `<span class="td-empty">—</span> <button class="edit-btn" onclick="doEditSubnet('${e(n.id)}','${e(n.name)}','')">Set</button>`;
+
     return `<tr>
       <td class="td-name">${e(n.name)}</td>
       <td>${badge(n.status)}</td>
       <td class="td-mono">${e(n.vpn_ip)}</td>
       <td class="td-mono">${e(n.endpoint_ip)}:${e(String(n.endpoint_port))}</td>
+      <td class="td-subnet">${subnetCell}</td>
       <td class="${tsClass}">${relTime(n.last_seen)}</td>
       <td class="td-actions">${activateBtn}${revokeBtn}${deleteBtn}</td>
     </tr>`;
@@ -308,6 +315,47 @@ function doDelete(id, name) {
     }
   );
 }
+
+// ── Subnet edit ────────────────────────────────────────────────────────────
+const subnetOverlay   = get('subnet-overlay');
+const subnetNodeName  = get('subnet-node-name');
+const subnetInp       = get('subnet-inp');
+const subnetCancelBtn = get('subnet-cancel');
+const subnetSaveBtn   = get('subnet-save');
+
+let _subnetNodeId = null;
+
+function doEditSubnet(id, name, current) {
+  _subnetNodeId = id;
+  subnetNodeName.textContent = name;
+  subnetInp.value = current || '';
+  subnetOverlay.classList.add('open');
+  setTimeout(() => subnetInp.focus(), 50);
+}
+
+function closeSubnetModal() {
+  subnetOverlay.classList.remove('open');
+  _subnetNodeId = null;
+}
+
+subnetCancelBtn.addEventListener('click', closeSubnetModal);
+subnetOverlay.addEventListener('click', ev => { if (ev.target === subnetOverlay) closeSubnetModal(); });
+subnetInp.addEventListener('keydown', ev => { if (ev.key === 'Enter') subnetSaveBtn.click(); });
+
+subnetSaveBtn.addEventListener('click', async () => {
+  if (!_subnetNodeId) return;
+  const subnet = subnetInp.value.trim();
+  subnetSaveBtn.disabled = true;
+  try {
+    await updateSubnet(_subnetNodeId, subnet);
+    closeSubnetModal();
+    toast(subnet ? `Subnet set to ${subnet}` : 'Subnet cleared');
+  } catch (err) {
+    toast(err.message, 'err');
+  } finally {
+    subnetSaveBtn.disabled = false;
+  }
+});
 
 // ── Token actions ──────────────────────────────────────────────────────────
 function doDeleteToken(id, label) {
