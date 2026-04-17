@@ -10,6 +10,7 @@ class NodeRegisterRequest(BaseModel):
     name: str
     wireguard_public_key: str
     endpoint_port: int
+    site_subnet: Optional[str] = None   # e.g. "192.168.1.0/24" — LAN behind this node
     # endpoint_ip is derived from request.client.host by the controller
     # vpn_ip is auto-assigned by the controller from VPN_SUBNET
     preauth_token: Optional[str] = None
@@ -32,6 +33,7 @@ class PeerResponse(BaseModel):
     vpn_ip: str
     preferred_endpoint: str
     endpoint_port: int
+    site_subnet: Optional[str] = None   # LAN subnet to add to WireGuard AllowedIPs
 
 
 class NodeAdminResponse(BaseModel):
@@ -45,6 +47,7 @@ class NodeAdminResponse(BaseModel):
     reflected_endpoint_ip: Optional[str] = None
     reflected_endpoint_port: Optional[int] = None
     vpn_ip: str
+    site_subnet: Optional[str] = None
     status: NodeStatus
     last_seen: datetime
     created_at: datetime

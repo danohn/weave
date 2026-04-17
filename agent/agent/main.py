@@ -4,6 +4,7 @@ import logging
 import signal
 import sys
 
+from agent import frr
 from agent import wireguard as wg
 from agent.config import Settings
 from agent.controller import ControllerClient, Peer
@@ -166,6 +167,13 @@ async def run() -> None:
         listen_port=settings.ENDPOINT_PORT,
     )
     wg.sync_peers(settings.INTERFACE, peers, settings.PRIVATE_KEY_FILE, settings.ENDPOINT_PORT)
+
+    # Fetch and apply FRR BGP config (no-op if FRR is not installed)
+    try:
+        frr_config = await client.get_frr_config(node.node_id, node.auth_token)
+        frr.apply_config(frr_config)
+    except Exception as exc:
+        logger.warning("Could not apply FRR config: %s", exc)
 
     logger.info("Interface %s is up — entering main loop", settings.INTERFACE)
 

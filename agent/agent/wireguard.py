@@ -105,11 +105,14 @@ def sync_peers(
         "",
     ]
     for peer in peers:
+        allowed_ips = f"{peer.vpn_ip}/32"
+        if peer.site_subnet:
+            allowed_ips += f", {peer.site_subnet}"
         lines += [
             "[Peer]",
             f"PublicKey = {peer.wireguard_public_key}",
             f"Endpoint = {peer.preferred_endpoint}:{peer.endpoint_port}",
-            f"AllowedIPs = {peer.vpn_ip}/32",
+            f"AllowedIPs = {allowed_ips}",
             "PersistentKeepalive = 25",
             "",
         ]
@@ -140,6 +143,6 @@ def teardown(interface: str) -> None:
 def peer_signature(peers: list[Peer]) -> frozenset:
     """Hashable representation of a peer list for change detection."""
     return frozenset(
-        (p.wireguard_public_key, p.vpn_ip, p.preferred_endpoint, p.endpoint_port)
+        (p.wireguard_public_key, p.vpn_ip, p.preferred_endpoint, p.endpoint_port, p.site_subnet)
         for p in peers
     )

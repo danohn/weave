@@ -19,6 +19,11 @@ services:
     build: ./controller
     container_name: weave-controller
     restart: unless-stopped
+    cap_add:
+      - NET_ADMIN    # required for WireGuard interface management
+      - SYS_MODULE   # required to load the wireguard kernel module if not already loaded
+    ports:
+      - "51820:51820/udp"   # WireGuard — edge agents connect here directly (not via Traefik)
     volumes:
       - weave_db:/app/data
     networks:
@@ -27,6 +32,11 @@ services:
       DATABASE_URL: "sqlite+aiosqlite:////app/data/weave.db"
       ADMIN_TOKEN: "${ADMIN_TOKEN:?ADMIN_TOKEN env var must be set}"
       VPN_SUBNET: "${VPN_SUBNET:-10.0.0.0/24}"
+      # Passed through so the controller can advertise itself as a WireGuard
+      # peer — agents already connect to this domain for the API, so the same
+      # hostname works for WireGuard (UDP 51820).
+      WEAVE_DOMAIN: "${WEAVE_DOMAIN:?WEAVE_DOMAIN env var must be set}"
+      CONTROLLER_ENDPOINT_PORT: "${CONTROLLER_ENDPOINT_PORT:-51820}"
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.weave-api.rule=Host(`${WEAVE_DOMAIN}`) && (PathPrefix(`/api`) || PathPrefix(`/ws`) || PathPrefix(`/health`))"

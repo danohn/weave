@@ -65,6 +65,7 @@ async def register_node(
         endpoint_ip=reflected_ip,
         endpoint_port=data.endpoint_port,
         vpn_ip=vpn_ip,
+        site_subnet=data.site_subnet,
         reflected_endpoint_ip=reflected_ip,
         auth_token=generate_token(),
         status=initial_status,

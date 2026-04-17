@@ -9,7 +9,7 @@ set -euo pipefail
 
 # ── Logging ─────────────────────────────────────────────────────────────────
 LOG_FILE="/tmp/weave-install.log"
-: > "$LOG_FILE"   # truncate
+: > "$LOG_FILE"
 
 CURRENT_STEP="init"
 
@@ -106,9 +106,21 @@ info "Controller: $CONTROLLER_URL"
 info "Interface:  $INTERFACE  (port $ENDPOINT_PORT)"
 log ""
 
-step "Installing system dependencies (wireguard-tools, git)..."
-apt-get update -y        >> "$LOG_FILE" 2>&1
-apt-get install -y wireguard-tools git >> "$LOG_FILE" 2>&1
+step "Installing system dependencies (wireguard-tools, frr, git)..."
+apt-get update -y                              >> "$LOG_FILE" 2>&1
+apt-get install -y wireguard-tools frr git     >> "$LOG_FILE" 2>&1
+
+step "Enabling FRR daemons (bgpd, bfdd)..."
+FRR_DAEMONS="/etc/frr/daemons"
+if [[ -f "$FRR_DAEMONS" ]]; then
+  sed -i 's/^bgpd=no/bgpd=yes/' "$FRR_DAEMONS"
+  sed -i 's/^bfdd=no/bfdd=yes/' "$FRR_DAEMONS"
+  # Integrated config — one frr.conf for all daemons
+  echo "service integrated-vtysh-config" > /etc/frr/vtysh.conf
+  info "bgpd and bfdd enabled"
+else
+  info "FRR daemons file not found — agent will configure at first run"
+fi
 
 export PATH="$HOME/.local/bin:$PATH"
 
@@ -127,8 +139,6 @@ step "Writing configuration..."
 mkdir -p /etc/weave
 chmod 700 /etc/weave
 
-# Use printf to write each value — avoids shell expansion of special characters
-# in URLs or tokens that would corrupt the file with an unquoted heredoc.
 {
   printf 'CONTROLLER_URL=%s\n'      "$CONTROLLER_URL"
   printf 'NODE_NAME=%s\n'           "$NODE_NAME"
@@ -154,9 +164,7 @@ EnvironmentFile=/etc/weave/agent.env
 ExecStart=/usr/local/bin/weave
 Restart=on-failure
 RestartSec=10
-# Never give up restarting — network outages can be arbitrarily long
 StartLimitIntervalSec=0
-# Don't wait 90s for graceful shutdown; our SIGTERM handler is fast
 TimeoutStopSec=15
 
 StandardOutput=journal
@@ -164,8 +172,6 @@ StandardError=journal
 SyslogIdentifier=weave
 
 User=root
-# Basic hardening (WireGuard requires root/CAP_NET_ADMIN so full sandboxing isn't possible)
-# Note: ProtectHome cannot be used — uv stores the tool venv under /root/.local/
 PrivateTmp=yes
 
 [Install]
@@ -204,7 +210,6 @@ log "  Follow logs:  journalctl -fu weave"
 log "  Full install log: $LOG_FILE"
 log ""
 
-# Machine-readable status line — easy to grep across cloud-init logs
 if [[ -n "$NODE_ID" ]]; then
   echo "WEAVE_INSTALL=success node=${NODE_NAME} node_id=${NODE_ID} vpn_ip=${VPN_IP}"
 else

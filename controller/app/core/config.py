@@ -15,5 +15,15 @@ class Settings(BaseSettings):
     STALE_CHECK_INTERVAL: int = 15      # run the expiry sweep this often
     REQUIRE_PREAUTH: bool = True        # reject registration without a valid pre-auth token
 
+    # Controller overlay — WireGuard route reflector running inside the container.
+    CONTROLLER_VPN_IP: str = "10.0.0.254"
+    CONTROLLER_ENDPOINT_PORT: int = 51820
+    WG_INTERFACE: str = "wg0"
+    # Public key is read from this file (written by entrypoint.sh at startup)
+    WG_PUBLIC_KEY_FILE: str = "/app/data/rr-publickey"
+    # Domain agents already use to reach the controller — reused as the
+    # WireGuard endpoint hostname so no separate IP config is needed.
+    WEAVE_DOMAIN: str = ""
+
 
 settings = Settings()

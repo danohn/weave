@@ -32,6 +32,7 @@ class Node(Base):
         Integer, nullable=True
     )
     vpn_ip: Mapped[str] = mapped_column(String, nullable=False)
+    site_subnet: Mapped[str | None] = mapped_column(String, nullable=True)
     status: Mapped[NodeStatus] = mapped_column(
         Enum(NodeStatus), nullable=False, default=NodeStatus.PENDING
     )

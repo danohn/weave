@@ -24,6 +24,7 @@ class Peer:
     vpn_ip: str
     preferred_endpoint: str
     endpoint_port: int
+    site_subnet: str | None = None
 
 
 class ControllerClient:
@@ -96,4 +97,14 @@ class ControllerClient:
             headers={"Authorization": f"Bearer {token}"},
         )
         resp.raise_for_status()
-        return [Peer(**p) for p in resp.json()]
+        known = {f for f in Peer.__dataclass_fields__}
+        return [Peer(**{k: v for k, v in p.items() if k in known}) for p in resp.json()]
+
+    async def get_frr_config(self, node_id: str, token: str) -> str:
+        """Fetch the FRR BGP config for this node from the controller."""
+        resp = await self._client.get(
+            f"{self._base}/api/v1/nodes/{node_id}/frr-config",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        resp.raise_for_status()
+        return resp.text

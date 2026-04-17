@@ -11,16 +11,17 @@ logging.basicConfig(
 
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import func, select
+from sqlalchemy import select
+from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.agent_ws import broadcast_peers
 from app.core.websocket import broadcast_state
 from app.db.base import AsyncSessionLocal, Base, engine, get_session
-from app.db.models import Node
+from app.db.models import Node, NodeStatus
 from app.routers import agent_ws, auth, nodes, peers, ws
-from app.services import node_service
+from app.services import frr_service, node_service, wireguard_service
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +47,23 @@ async def _expiry_loop() -> None:
 async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+    # Restore WireGuard peers and BGP neighbors for all known nodes after a
+    # container restart. OFFLINE nodes are kept in WG/FRR so sessions recover
+    # automatically when they come back; revoked/pending nodes are excluded.
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(Node).where(
+                Node.status.in_([NodeStatus.ACTIVE, NodeStatus.OFFLINE])
+            )
+        )
+        existing_nodes = list(result.scalars().all())
+
+    if existing_nodes:
+        logger.info("Syncing %d node(s) to WireGuard and FRR on startup", len(existing_nodes))
+        await wireguard_service.sync_peers(existing_nodes)
+        for node in existing_nodes:
+            await frr_service.add_neighbor(node)
 
     task = asyncio.create_task(_expiry_loop())
     yield
