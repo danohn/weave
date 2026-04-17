@@ -39,7 +39,6 @@ echo "[wg] Interface $WG_INTERFACE up — ${CONTROLLER_VPN_IP}/24 port ${CONTROL
 # Enable required daemons
 if [[ -f /etc/frr/daemons ]]; then
   sed -i 's/^bgpd=no/bgpd=yes/' /etc/frr/daemons
-  sed -i 's/^bfdd=no/bfdd=yes/'  /etc/frr/daemons
 fi
 
 # Integrated config — one frr.conf for all daemons
@@ -83,17 +82,11 @@ chmod 640 /etc/frr/frr.conf
 # Start bgpd and bfdd under watchfrr so they are automatically restarted
 # if they crash. watchfrr itself runs in the background and survives bgpd
 # restarts. Logs flow to PID 1 so they appear in docker logs.
-if /usr/lib/frr/watchfrr \
-  --daemon \
-  -F traditional \
+/usr/lib/frr/watchfrr \
   --log-level informational \
-  bgpd bfdd \
+  bgpd \
   >> /proc/1/fd/1 2>> /proc/1/fd/2 &
-then
-  echo "[frr] watchfrr started (pid $!) — supervising bgpd + bfdd"
-else
-  echo "[frr] watchfrr failed to start (non-fatal)"
-fi
+echo "[frr] watchfrr started (pid $!) — supervising bgpd"
 
 # Give FRR time to open its vtysh socket before the API tries to add neighbors
 sleep 3
