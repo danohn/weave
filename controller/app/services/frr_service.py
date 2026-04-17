@@ -7,6 +7,7 @@ immediately without interrupting existing BGP sessions.
 """
 
 import asyncio
+import json
 import logging
 
 from app.core.config import settings
@@ -17,8 +18,8 @@ logger = logging.getLogger(__name__)
 BGP_ASN = 65000
 
 
-async def _vtysh(*commands: str) -> None:
-    """Run vtysh commands asynchronously. Logs a warning on failure."""
+async def _vtysh(*commands: str) -> str:
+    """Run vtysh commands asynchronously. Returns stdout. Raises on failure."""
     args = ["vtysh"]
     for cmd in commands:
         args += ["-c", cmd]
@@ -27,9 +28,37 @@ async def _vtysh(*commands: str) -> None:
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
-    _, stderr = await proc.communicate()
+    stdout, stderr = await proc.communicate()
     if proc.returncode != 0:
         raise RuntimeError(stderr.decode().strip())
+    return stdout.decode()
+
+
+async def get_bgp_status() -> dict[str, dict]:
+    """Return BGP neighbor status keyed by VPN IP.
+
+    Queries `show bgp summary json` and returns a dict like:
+      {
+        "10.0.0.1": {"state": "Established", "uptime": "00:10:15", "prefixes_received": 1},
+        "10.0.0.2": {"state": "Active",       "uptime": "never",    "prefixes_received": 0},
+      }
+    Returns an empty dict if FRR is unreachable.
+    """
+    try:
+        output = await _vtysh("show bgp summary json")
+        data = json.loads(output)
+        peers = data.get("ipv4Unicast", {}).get("peers", {})
+        return {
+            ip: {
+                "state": peer.get("state", "Unknown"),
+                "uptime": peer.get("peerUptime", "never"),
+                "prefixes_received": peer.get("pfxRcd", 0),
+            }
+            for ip, peer in peers.items()
+        }
+    except Exception as exc:
+        logger.warning("BGP: could not get status: %s", exc)
+        return {}
 
 
 async def add_bfd_peer(node: Node) -> None:

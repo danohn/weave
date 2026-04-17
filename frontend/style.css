@@ -341,6 +341,32 @@ td.td-subnet  { white-space: nowrap; }
 .badge-revoked { background: var(--gray-100);  color: var(--gray-400); text-decoration: line-through; }
 .badge-revoked .badge-pip { background: var(--gray-300); }
 
+/* BGP session status */
+.badge-bgp-up      { background: var(--green-bg);  color: var(--green-text); }
+.badge-bgp-up      .badge-pip { background: var(--green-pip); }
+
+.badge-bgp-pending { background: var(--amber-bg);  color: var(--amber-text); }
+.badge-bgp-pending .badge-pip { background: var(--amber-pip); }
+
+.badge-bgp-down    { background: var(--red-bg);    color: var(--red-text); }
+.badge-bgp-down    .badge-pip { background: var(--red-pip); }
+
+.badge-bgp-unknown { background: var(--gray-100);  color: var(--gray-400); }
+.badge-bgp-unknown .badge-pip { background: var(--gray-300); }
+
+/* Subnet reachability dot */
+.reach-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  margin-right: 5px;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+.reach-ok  { background: var(--green-pip); }
+.reach-no  { background: var(--amber-pip); }
+
 /* Token status */
 .badge-unused { background: var(--gray-100); color: var(--gray-500); }
 .badge-unused .badge-pip { background: var(--gray-300); }

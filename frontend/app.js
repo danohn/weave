@@ -4,6 +4,7 @@ const state = {
   token: '',
   nodes: [],
   tokens: [],
+  bgp: {},        // keyed by vpn_ip → { state, uptime, prefixes_received }
   connected: false,
   lastUpdated: null,
 };
@@ -70,9 +71,10 @@ async function api(path, opts = {}) {
   return res.status === 204 ? null : res.json();
 }
 
-const fetchHealth  = ()      => api('/health');
-const fetchNodes   = ()      => api('/api/v1/nodes/');
-const fetchTokens  = ()      => api('/api/v1/auth/tokens');
+const fetchHealth    = ()    => api('/health');
+const fetchNodes     = ()    => api('/api/v1/nodes/');
+const fetchTokens    = ()    => api('/api/v1/auth/tokens');
+const fetchBgpStatus = ()    => api('/api/v1/bgp/status');
 const activateNode  = id             => api(`/api/v1/nodes/${id}/activate`, { method: 'PATCH' });
 const revokeNode    = id             => api(`/api/v1/nodes/${id}/revoke`,   { method: 'DELETE' });
 const deleteNode    = id             => api(`/api/v1/nodes/${id}`,          { method: 'DELETE' });
@@ -123,8 +125,31 @@ function closeWebSocket() {
   }
 }
 
+// ── BGP status polling (independent of node list) ─────────────────────────
+let bgpPollTimer = null;
+
+async function pollBgp() {
+  if (!state.connected) return;
+  try {
+    state.bgp = await fetchBgpStatus();
+    renderNodes();
+  } catch { /* non-fatal — BGP column shows unknown */ }
+}
+
+function startBgpPoll() {
+  stopBgpPoll();
+  pollBgp();
+  bgpPollTimer = setInterval(pollBgp, 5_000);
+}
+
+function stopBgpPoll() {
+  clearInterval(bgpPollTimer);
+  bgpPollTimer = null;
+}
+
 // ── Apply state from WS message or HTTP fetch ──────────────────────────────
 function applyState(nodes, tokens) {
+  const wasConnected = state.connected;
   state.nodes       = nodes;
   state.tokens      = tokens;
   state.connected   = true;
@@ -135,6 +160,7 @@ function applyState(nodes, tokens) {
   renderNodes();
   renderTokens();
   renderTimestamp();
+  if (!wasConnected) startBgpPoll();
 }
 
 // ── HTTP refresh (used on connect and as WS fallback) ──────────────────────
@@ -176,7 +202,7 @@ const STATUS_ORDER = { ACTIVE: 0, PENDING: 1, OFFLINE: 2, REVOKED: 3 };
 
 function renderNodes() {
   if (!state.nodes.length) {
-    tbody.innerHTML = `<tr><td colspan="8"><div class="placeholder">No nodes registered yet</div></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="9"><div class="placeholder">No nodes registered yet</div></td></tr>`;
     return;
   }
 
@@ -197,13 +223,22 @@ function renderNodes() {
       ? `<button class="row-btn" onclick="doDelete('${e(n.id)}','${e(n.name)}')">Delete</button>`
       : '';
 
+    const bgpInfo  = state.bgp[n.vpn_ip];
+    const bgpCell  = bgpBadge(bgpInfo);
+
+    const advertised = bgpInfo && bgpInfo.prefixes_received > 0;
+    const reachDot = n.site_subnet
+      ? `<span class="reach-dot ${advertised ? 'reach-ok' : 'reach-no'}" title="${advertised ? 'Route advertised' : 'Not advertising'}"></span>`
+      : '';
+
     const subnetCell = n.site_subnet
-      ? `<span class="subnet-pill">${e(n.site_subnet)}</span> <button class="edit-btn" onclick="doEditSubnet('${e(n.id)}','${e(n.name)}','${e(n.site_subnet || '')}')">Edit</button>`
+      ? `${reachDot}<span class="subnet-pill">${e(n.site_subnet)}</span> <button class="edit-btn" onclick="doEditSubnet('${e(n.id)}','${e(n.name)}','${e(n.site_subnet || '')}')">Edit</button>`
       : `<span class="td-empty">—</span> <button class="edit-btn" onclick="doEditSubnet('${e(n.id)}','${e(n.name)}','')">Set</button>`;
 
     return `<tr>
       <td class="td-name">${e(n.name)}</td>
       <td>${badge(n.status)}</td>
+      <td>${bgpCell}</td>
       <td class="td-mono">${e(n.vpn_ip)}</td>
       <td class="td-mono">${e(n.endpoint_ip)}:${e(String(n.endpoint_port))}</td>
       <td class="td-subnet">${subnetCell}</td>
@@ -248,6 +283,17 @@ function renderTokens() {
 function badge(status) {
   const cls = 'badge-' + status.toLowerCase();
   return `<span class="badge ${cls}"><span class="badge-pip"></span>${e(status)}</span>`;
+}
+
+function bgpBadge(info) {
+  if (!info) return `<span class="badge badge-bgp-unknown"><span class="badge-pip"></span>—</span>`;
+  const s = info.state;
+  let cls = 'badge-bgp-unknown';
+  if (s === 'Established') cls = 'badge-bgp-up';
+  else if (s === 'Active' || s === 'Connect') cls = 'badge-bgp-pending';
+  else if (s === 'Idle' || s === 'OpenSent' || s === 'OpenConfirm') cls = 'badge-bgp-down';
+  const label = s === 'Established' ? `${s} (${info.uptime})` : s;
+  return `<span class="badge ${cls}"><span class="badge-pip"></span>${e(label)}</span>`;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
