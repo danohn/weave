@@ -6,12 +6,23 @@ A WireGuard-based SD-WAN control plane. The controller handles orchestration, NA
 
 Weave has four moving parts:
 
-- **Controller**: FastAPI service that stores node state, allocates VPN IPs, validates pre-auth tokens, and serves peer lists to agents.
+- **Controller**: FastAPI service that stores node state, allocates VPN IPs, validates pre-auth tokens, and serves peer lists to agents. It also runs FRR as a BGP route reflector on the overlay.
 - **Agent**: lightweight daemon installed on each edge node. It registers with the controller, maintains WireGuard state, heartbeats periodically, and applies FRR configuration when present.
 - **Frontend**: static admin dashboard served by nginx. It talks to the controller over the same origin using the REST API and admin WebSocket.
 - **Reverse proxy**: Traefik routes browser/API traffic to nginx or the controller based on path, while WireGuard UDP traffic goes directly to the controller host on port `51820`.
 
-At runtime, the controller acts as the source of truth. Agents register once, receive a node auth token plus VPN IP, then keep their local WireGuard and FRR state in sync from controller-provided peer updates.
+At runtime, the controller acts as the source of truth. Agents register once, receive a node auth token plus VPN IP, then keep their local WireGuard and FRR state in sync from controller-provided peer updates. Overlay transport happens over WireGuard; routed site reachability is exchanged over BGP sessions running across that overlay.
+
+## Why FRR, BGP, and BFD?
+
+Weave is more than a WireGuard peer distributor. WireGuard gives each node secure encrypted transport, but FRR is what turns that transport into a routed SD-WAN:
+
+- **BGP advertises site subnets**: each node can optionally publish a `site_subnet` behind it, so remote nodes learn LAN reachability dynamically instead of relying on hand-written static routes.
+- **Route reflection avoids full-mesh BGP**: the controller runs FRR as a route reflector, so every node peers only with the controller over the overlay. Nodes do not need to maintain BGP sessions to every other node.
+- **BFD accelerates failure detection**: BFD is enabled alongside BGP so routing liveliness is detected faster than waiting on default BGP convergence timers alone.
+- **WireGuard and routing stay separate**: WireGuard handles encryption and transport, while FRR handles prefix exchange and routing decisions.
+
+In the current implementation, the controller brings up `wg0`, starts `bgpd` and `bfdd`, defines a `NODES` peer-group, and dynamically adds or removes neighbors as nodes become active or revoked. Each agent fetches a generated FRR config from the controller, peers its local FRR instance with the controller over the WireGuard overlay, and advertises its `site_subnet` when one is configured.
 
 ## Repository structure
 
