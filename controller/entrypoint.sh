@@ -47,6 +47,8 @@ echo "service integrated-vtysh-config" > /etc/frr/vtysh.conf
 
 mkdir -p /run/frr
 chown frr:frr /run/frr
+# Allow root (uvicorn process) to use vtysh — its socket is group-restricted to frrvty
+usermod -aG frrvty root 2>/dev/null || true
 
 # Write base route reflector config.
 # Neighbors are added/removed dynamically via vtysh as nodes activate/revoke —

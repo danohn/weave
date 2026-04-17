@@ -22,6 +22,7 @@ services:
     cap_add:
       - NET_ADMIN    # required for WireGuard interface management
       - SYS_MODULE   # required to load the wireguard kernel module if not already loaded
+      - SYS_ADMIN    # required for FRR BGP/BFD privilege initialisation (cap_set_proc)
     ports:
       - "51820:51820/udp"   # WireGuard — edge agents connect here directly (not via Traefik)
     volumes:
