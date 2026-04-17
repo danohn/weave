@@ -10,7 +10,7 @@ from app.services.wireguard_service import get_public_key
 async def get_peers(node: Node, session: AsyncSession) -> list[PeerResponse]:
     result = await session.execute(
         select(Node).where(
-            Node.status == NodeStatus.ACTIVE,
+            Node.status.in_([NodeStatus.ACTIVE, NodeStatus.OFFLINE]),
             Node.id != node.id,
         )
     )
