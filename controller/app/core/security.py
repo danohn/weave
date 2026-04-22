@@ -1,6 +1,7 @@
-import hashlib
 import secrets
 
+from argon2 import PasswordHasher
+from argon2.exceptions import InvalidHashError, VerifyMismatchError
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
@@ -17,8 +18,18 @@ def generate_token() -> str:
     return secrets.token_urlsafe(32)
 
 
+_hasher = PasswordHasher()
+
+
 def hash_token(token: str) -> str:
-    return hashlib.sha256(token.encode()).hexdigest()
+    return _hasher.hash(token)
+
+
+def verify_token(plaintext: str, token_hash: str) -> bool:
+    try:
+        return _hasher.verify(token_hash, plaintext)
+    except (VerifyMismatchError, InvalidHashError):
+        return False
 
 
 async def get_current_node(

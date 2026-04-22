@@ -4,9 +4,8 @@ Revision ID: 0005
 Revises: 0004
 Create Date: 2026-04-17
 """
-import hashlib
-
 import sqlalchemy as sa
+from argon2 import PasswordHasher
 from alembic import op
 
 revision = "0005"
@@ -45,8 +44,9 @@ def upgrade() -> None:
                 """
             )
         ).fetchall()
+        _ph = PasswordHasher()
         for row in rows:
-            token_hash = hashlib.sha256(row.token.encode()).hexdigest()
+            token_hash = _ph.hash(row.token)
             token_prefix = row.token[:8]
             conn.execute(
                 sa.text(

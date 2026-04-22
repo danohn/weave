@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.security import generate_token, hash_token
+from app.core.security import generate_token, verify_token
 from app.db.models import Node, NodeStatus, PreAuthToken
 from app.schemas.node import NodeRegisterRequest, NodeUpdateRequest
 
@@ -46,12 +46,17 @@ async def register_node(
     # Pre-auth token validation
     preauth_row: PreAuthToken | None = None
     if data.preauth_token:
-        token_result = await session.execute(
-            select(PreAuthToken).where(PreAuthToken.token_hash == hash_token(data.preauth_token))
+        candidate_result = await session.execute(
+            select(PreAuthToken).where(PreAuthToken.token_prefix == data.preauth_token[:8])
         )
-        preauth_row = token_result.scalar_one_or_none()
-        if not preauth_row or preauth_row.used_at is not None:
+        candidate = candidate_result.scalar_one_or_none()
+        if (
+            not candidate
+            or candidate.used_at is not None
+            or not verify_token(data.preauth_token, candidate.token_hash)
+        ):
             raise HTTPException(status_code=401, detail="Invalid or already-used pre-auth token")
+        preauth_row = candidate
     elif settings.REQUIRE_PREAUTH:
         raise HTTPException(status_code=401, detail="A pre-auth token is required to register")
 
