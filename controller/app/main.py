@@ -14,13 +14,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select
 from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.middleware.sessions import SessionMiddleware
 
 from app.core.config import settings
 from app.core.agent_ws import broadcast_peers
 from app.core.websocket import broadcast_state
 from app.db.base import AsyncSessionLocal, Base, engine, get_session
 from app.db.models import Node, NodeStatus
-from app.routers import agent_ws, auth, bgp, nodes, peers, ws
+from app.routers import agent_ws, auth, auth_web, bgp, nodes, peers, ws
 from app.services import frr_service, node_service, wireguard_service
 
 logger = logging.getLogger(__name__)
@@ -85,6 +86,15 @@ app = FastAPI(
 )
 
 app.add_middleware(
+    SessionMiddleware,
+    secret_key=settings.SESSION_SECRET,
+    session_cookie="weave_session",
+    same_site="lax",
+    https_only=True,
+    max_age=86400 * 7,
+)
+
+app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_methods=["*"],
@@ -93,6 +103,7 @@ app.add_middleware(
 
 app.include_router(agent_ws.router)
 app.include_router(auth.router)
+app.include_router(auth_web.router)
 app.include_router(bgp.router)
 app.include_router(nodes.router)
 app.include_router(peers.router)

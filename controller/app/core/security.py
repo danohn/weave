@@ -6,8 +6,8 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.requests import Request
 
-from app.core.config import settings
 from app.db.base import get_session
 from app.db.models import Node
 
@@ -49,12 +49,9 @@ async def get_current_node(
     return node
 
 
-def require_admin(
-    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
-) -> None:
-    if credentials.credentials != settings.ADMIN_TOKEN:
+def require_admin(request: Request) -> None:
+    if not request.session.get("user"):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid admin token",
-            headers={"WWW-Authenticate": "Bearer"},
+            detail="Not authenticated",
         )

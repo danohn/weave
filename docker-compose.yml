@@ -12,10 +12,10 @@ services:
       - "traefik.enable=true"
       - "traefik.docker.network=${TRAEFIK_NETWORK:?TRAEFIK_NETWORK env var must be set}"
       - "traefik.http.routers.weave-ui.rule=Host(`${WEAVE_DOMAIN:?WEAVE_DOMAIN env var must be set}`)"
-      - "traefik.http.routers.weave-ui.priority=10"
+      - "traefik.http.routers.weave-ui.priority=50"
       - "traefik.http.routers.weave-ui.service=weave-ui"
       - "traefik.http.services.weave-ui.loadBalancer.server.port=80"
-      - "traefik.http.routers.weave-ui.middlewares=${TRAEFIK_MIDDLEWARE:-}"
+      - "traefik.http.routers.weave-ui.middlewares=${TRAEFIK_MIDDLEWARE_UI:-${TRAEFIK_MIDDLEWARE:-}}"
 
   controller:
     build: ./controller
@@ -33,7 +33,13 @@ services:
       - backend
     environment:
       DATABASE_URL: "sqlite+aiosqlite:////app/data/weave.db"
-      ADMIN_TOKEN: "${ADMIN_TOKEN:?ADMIN_TOKEN env var must be set}"
+      ADMIN_TOKEN: "${ADMIN_TOKEN:-}"
+      SESSION_SECRET: "${SESSION_SECRET:?SESSION_SECRET env var must be set}"
+      OIDC_ISSUER: "${OIDC_ISSUER:?OIDC_ISSUER env var must be set}"
+      OIDC_CLIENT_ID: "${OIDC_CLIENT_ID:?OIDC_CLIENT_ID env var must be set}"
+      OIDC_CLIENT_SECRET: "${OIDC_CLIENT_SECRET:?OIDC_CLIENT_SECRET env var must be set}"
+      OIDC_REDIRECT_URI: "${OIDC_REDIRECT_URI:-}"
+      OIDC_ADMIN_GROUP: "${OIDC_ADMIN_GROUP:-}"
       VPN_SUBNET: "${VPN_SUBNET:-10.0.0.0/24}"
       # Passed through so the controller can advertise itself as a WireGuard
       # peer — agents already connect to this domain for the API, so the same
@@ -43,7 +49,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=${TRAEFIK_NETWORK:?TRAEFIK_NETWORK env var must be set}"
-      - "traefik.http.routers.weave-api.rule=Host(`${WEAVE_DOMAIN}`) && (PathPrefix(`/api`) || PathPrefix(`/ws`) || PathPrefix(`/health`))"
+      - "traefik.http.routers.weave-api.rule=Host(`${WEAVE_DOMAIN}`) && (PathPrefix(`/api`) || PathPrefix(`/ws`) || PathPrefix(`/health`) || PathPrefix(`/auth`))"
       - "traefik.http.routers.weave-api.priority=100"
       - "traefik.http.routers.weave-api.service=weave-api"
       - "traefik.http.services.weave-api.loadBalancer.server.port=8000"

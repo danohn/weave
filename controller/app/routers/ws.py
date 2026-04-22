@@ -1,8 +1,7 @@
 import json
 
-from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from app.core.config import settings
 from app.core.websocket import broadcast_state, manager
 from app.db.base import AsyncSessionLocal
 
@@ -10,11 +9,9 @@ router = APIRouter(tags=["ws"])
 
 
 @router.websocket("/ws")
-async def websocket_endpoint(
-    ws: WebSocket,
-    token: str = Query(...),
-) -> None:
-    if token != settings.ADMIN_TOKEN:
+async def websocket_endpoint(ws: WebSocket) -> None:
+    user = ws.session.get("user")
+    if not user:
         await ws.close(code=4001, reason="Unauthorized")
         return
 

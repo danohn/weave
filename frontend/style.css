@@ -96,51 +96,35 @@ main {
   padding: 20px 24px 48px;
 }
 
-/* ── Config bar ───────────────────────────────────────────── */
-.config-bar {
+/* ── Login view ───────────────────────────────────────────── */
+.login-view {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  padding: 12px 14px;
-  border: 1px solid var(--gray-200);
-  border-radius: 8px;
-  margin-bottom: 20px;
-  background: var(--gray-50);
+  justify-content: center;
+  gap: 16px;
+  min-height: calc(100vh - 52px);
 }
 
-.config-field {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  flex: 1;
-  min-width: 180px;
+.login-view h1 {
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
 }
 
-.config-field label {
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+.login-view .btn {
+  height: 36px;
+  padding: 0 20px;
+  font-size: 14px;
+}
+
+.hidden { display: none !important; }
+
+/* ── Header user ──────────────────────────────────────────── */
+.header-user {
+  font-size: 12px;
   color: var(--gray-500);
-  white-space: nowrap;
 }
-
-.config-field input {
-  flex: 1;
-  height: 30px;
-  padding: 0 10px;
-  font-size: 13px;
-  font-family: var(--font);
-  border: 1px solid var(--gray-200);
-  border-radius: 6px;
-  background: var(--white);
-  outline: none;
-  transition: border-color 0.15s;
-  min-width: 0;
-}
-
-.config-field input:focus { border-color: var(--black); }
 
 /* ── Buttons ──────────────────────────────────────────────── */
 .btn {

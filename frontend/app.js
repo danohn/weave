@@ -1,7 +1,5 @@
 // ── State ──────────────────────────────────────────────────────────────────
 const state = {
-  url: location.origin,
-  token: '',
   nodes: [],
   tokens: [],
   bgp: {},        // keyed by vpn_ip → { state, uptime, prefixes_received }
@@ -12,8 +10,11 @@ const state = {
 // ── DOM ────────────────────────────────────────────────────────────────────
 const get = id => document.getElementById(id);
 
-const inpToken     = get('inp-token');
-const connectBtn   = get('connect-btn');
+const loginView    = get('login-view');
+const mainView     = get('main-view');
+const ssoBtn       = get('sso-btn');
+const logoutBtn    = get('logout-btn');
+const currentUser  = get('current-user');
 const hdot         = get('hdot');
 const hlabel       = get('hlabel');
 const tbody        = get('tbody');
@@ -40,27 +41,37 @@ const revealTokenInp = get('reveal-token-inp');
 const revealCopyBtn  = get('reveal-copy-btn');
 const revealDoneBtn  = get('reveal-done-btn');
 
-// ── Persistence ────────────────────────────────────────────────────────────
-(function loadConfig() {
-  const savedToken = localStorage.getItem('weave_token') || '';
-  inpToken.value = savedToken;
-  if (savedToken) state.token = savedToken;
-})();
+// ── View helpers ───────────────────────────────────────────────────────────
+function showLogin() {
+  loginView.classList.remove('hidden');
+  mainView.classList.add('hidden');
+  logoutBtn.classList.add('hidden');
+  currentUser.textContent = '';
+  setHealth(false, 'Signed out');
+  closeWebSocket();
+}
 
-function saveConfig() {
-  localStorage.setItem('weave_token', state.token);
+function showApp(username) {
+  loginView.classList.add('hidden');
+  mainView.classList.remove('hidden');
+  logoutBtn.classList.remove('hidden');
+  currentUser.textContent = username;
 }
 
 // ── API helpers ────────────────────────────────────────────────────────────
 async function api(path, opts = {}) {
-  const res = await fetch(state.url + path, {
+  const res = await fetch(path, {
+    credentials: 'same-origin',
     ...opts,
     headers: {
-      Authorization: `Bearer ${state.token}`,
       'Content-Type': 'application/json',
       ...(opts.headers || {}),
     },
   });
+  if (res.status === 401) {
+    showLogin();
+    return null;
+  }
   if (!res.ok) {
     const txt = await res.text().catch(() => '');
     let msg = `${res.status} ${res.statusText}`;
@@ -86,15 +97,13 @@ let ws = null;
 let wsReconnectTimer = null;
 
 function openWebSocket() {
-  if (!state.url || !state.token) return;
   if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
 
-  const wsUrl = state.url.replace(/^http/, 'ws') + `/ws?token=${encodeURIComponent(state.token)}`;
+  const wsUrl = location.origin.replace(/^http/, 'ws') + '/ws';
   ws = new WebSocket(wsUrl);
 
   ws.onopen = () => {
     clearTimeout(wsReconnectTimer);
-    // WS is live — stop polling to avoid redundant fetches
     clearInterval(state.timer);
     state.timer = null;
   };
@@ -107,7 +116,7 @@ function openWebSocket() {
   ws.onclose = ev => {
     ws = null;
     if (ev.code === 4001) {
-      setHealth(false, 'Unauthorized');
+      showLogin();
       return;
     }
     setHealth(false, 'Reconnecting…');
@@ -118,7 +127,7 @@ function openWebSocket() {
 function closeWebSocket() {
   clearTimeout(wsReconnectTimer);
   if (ws) {
-    ws.onclose = null; // suppress reconnect logic on intentional close
+    ws.onclose = null;
     ws.close();
     ws = null;
   }
@@ -131,7 +140,7 @@ async function pollBgp() {
   if (!state.connected) return;
   try {
     state.bgp = await fetchBgpStatus();
-    renderNodes();
+    if (state.bgp) renderNodes();
   } catch { /* non-fatal — BGP column shows unknown */ }
 }
 
@@ -164,9 +173,9 @@ function applyState(nodes, tokens) {
 
 // ── HTTP refresh (used on connect and as WS fallback) ──────────────────────
 async function refresh() {
-  if (!state.url || !state.token) return;
   try {
     const [health, nodes, tokens] = await Promise.all([fetchHealth(), fetchNodes(), fetchTokens()]);
+    if (!nodes || !tokens) return; // 401 already handled in api()
     applyState(nodes, tokens);
     setHealth(true, `${health.node_count} node${health.node_count !== 1 ? 's' : ''}`);
   } catch (err) {
@@ -315,15 +324,6 @@ function tsAgeClass(iso) {
   return 'ts-stale';
 }
 
-async function copyToken(val) {
-  try {
-    await navigator.clipboard.writeText(val);
-    toast('Token copied');
-  } catch {
-    toast('Copy failed — select manually', 'err');
-  }
-}
-
 // ── Node actions ───────────────────────────────────────────────────────────
 function doActivate(id, name) {
   confirm(
@@ -444,6 +444,7 @@ tokenCreateBtn.addEventListener('click', async () => {
   tokenCreateBtn.disabled = true;
   try {
     const data = await createToken(label);
+    if (!data) return;
     tokenOverlay.classList.remove('open');
     revealTokenInp.value = data.token;
     revealOverlay.classList.add('open');
@@ -476,22 +477,28 @@ function toast(msg, type = 'ok') {
   setTimeout(() => el.remove(), 3500);
 }
 
-// ── Events ─────────────────────────────────────────────────────────────────
-connectBtn.addEventListener('click', () => {
-  const token = inpToken.value.trim();
-  if (!token) { toast('Enter an admin token', 'err'); return; }
-  state.token = token;
-  saveConfig();
-  closeWebSocket();
-  refresh().then(() => openWebSocket());
+// ── Auth events ────────────────────────────────────────────────────────────
+ssoBtn.addEventListener('click', () => { window.location.href = '/auth/login'; });
+
+logoutBtn.addEventListener('click', async () => {
+  await fetch('/auth/logout', { method: 'POST', credentials: 'same-origin' });
+  window.location.href = '/';
 });
 
-inpToken.addEventListener('keydown', ev => ev.key === 'Enter' && connectBtn.click());
-
 // ── Boot ───────────────────────────────────────────────────────────────────
-if (state.token) {
-  refresh().then(() => openWebSocket());
+async function boot() {
+  const res = await fetch('/auth/me', { credentials: 'same-origin' });
+  if (!res.ok) {
+    showLogin();
+    return;
+  }
+  const user = await res.json();
+  showApp(user.username);
+  await refresh();
+  openWebSocket();
 }
+
+boot();
 
 // Tick relative timestamps every 10s without any network call
 setInterval(() => {

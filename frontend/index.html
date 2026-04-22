@@ -16,24 +16,24 @@
   </div>
 
   <div class="header-right">
+    <span id="current-user" class="header-user"></span>
+    <button class="btn btn-ghost" id="logout-btn">Sign out</button>
     <div class="health-badge">
       <div class="health-dot" id="hdot"></div>
-      <span id="hlabel">Disconnected</span>
+      <span id="hlabel">Connecting…</span>
     </div>
   </div>
 </header>
 
-<!-- ── Main ──────────────────────────────────────────────────────────── -->
-<main>
+<!-- ── Login view ────────────────────────────────────────────────────── -->
+<div id="login-view" class="login-view hidden">
+  <img src="/logo.svg" width="40" height="40" alt="Weave">
+  <h1>Weave</h1>
+  <button class="btn btn-primary" id="sso-btn">Sign in with SSO</button>
+</div>
 
-  <!-- Config bar -->
-  <div class="config-bar">
-    <div class="config-field">
-      <label>Token</label>
-      <input id="inp-token" type="password" placeholder="admin token" autocomplete="off">
-    </div>
-    <button class="btn btn-primary" id="connect-btn">Connect</button>
-  </div>
+<!-- ── Main ──────────────────────────────────────────────────────────── -->
+<main id="main-view">
 
   <!-- Stats -->
   <div class="stats">
@@ -81,7 +81,7 @@
       </thead>
       <tbody id="tbody">
         <tr><td colspan="9">
-          <div class="placeholder">Enter your server URL and admin token to connect</div>
+          <div class="placeholder">Loading…</div>
         </td></tr>
       </tbody>
     </table>
@@ -106,7 +106,7 @@
       </thead>
       <tbody id="tokens-tbody">
         <tr><td colspan="5">
-          <div class="placeholder">Enter your server URL and admin token to connect</div>
+          <div class="placeholder">Loading…</div>
         </td></tr>
       </tbody>
     </table>
