@@ -27,6 +27,11 @@ class Peer:
     site_subnet: str | None = None
 
 
+def parse_peer(data: dict) -> Peer:
+    known = {field for field in Peer.__dataclass_fields__}
+    return Peer(**{k: v for k, v in data.items() if k in known})
+
+
 class ControllerClient:
     def __init__(self, base_url: str) -> None:
         self._base = base_url.rstrip("/")
@@ -105,8 +110,7 @@ class ControllerClient:
             headers={"Authorization": f"Bearer {token}"},
         )
         resp.raise_for_status()
-        known = {f for f in Peer.__dataclass_fields__}
-        return [Peer(**{k: v for k, v in p.items() if k in known}) for p in resp.json()]
+        return [parse_peer(p) for p in resp.json()]
 
     async def get_frr_config(self, node_id: str, token: str) -> str:
         """Fetch the FRR BGP config for this node from the controller."""

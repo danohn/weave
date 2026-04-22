@@ -2,15 +2,11 @@ import asyncio
 import logging
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-from sqlalchemy import select
 
 from app.core.agent_ws import agent_manager
 from app.core.security import find_node_for_token
-from app.core.websocket import broadcast_state
-from app.core.agent_ws import broadcast_peers
 from app.db.base import AsyncSessionLocal
-from app.db.models import Node, NodeStatus
-from app.services import node_service
+from app.db.models import NodeStatus
 
 logger = logging.getLogger(__name__)
 
@@ -67,21 +63,7 @@ async def agent_ws(websocket: WebSocket, node_id: str) -> None:
             pass
         finally:
             agent_manager.disconnect(node_id)
-            # Mark the node OFFLINE immediately on disconnect rather than waiting
-            # for the stale heartbeat sweep. If it was a transient blip the next
-            # heartbeat will auto-recover it to ACTIVE within one interval.
-            # Use a fresh session — the long-lived WebSocket session may be in a
-            # bad state after an abrupt disconnect.
-            try:
-                async with AsyncSessionLocal() as offline_session:
-                    result = await offline_session.execute(
-                        select(Node).where(Node.id == node_id)
-                    )
-                    current = result.scalar_one_or_none()
-                    if current and current.status == NodeStatus.ACTIVE:
-                        logger.info("Agent %s disconnected — marking OFFLINE", node_id)
-                        await node_service.mark_node_offline(current, offline_session)
-                        await broadcast_state(offline_session)
-                        await broadcast_peers(offline_session)
-            except Exception:
-                logger.exception("Failed to mark agent %s offline on disconnect", node_id)
+            logger.info(
+                "Agent %s peer stream disconnected; keeping status unchanged until heartbeat expiry or clean shutdown",
+                node_id,
+            )

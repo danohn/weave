@@ -7,7 +7,7 @@ import sys
 from agent import frr
 from agent import wireguard as wg
 from agent.config import Settings
-from agent.controller import ControllerClient, Peer
+from agent.controller import ControllerClient, parse_peer
 from agent.state import NodeState
 from agent import state as state_store
 
@@ -94,7 +94,7 @@ async def peer_loop(
                     if data.get("type") == "ping":
                         await ws.send(json.dumps({"type": "pong"}))
                         continue
-                    peers = [Peer(**p) for p in data["peers"]]
+                    peers = [parse_peer(p) for p in data["peers"]]
                     apply(peers)
 
         except Exception as exc:
