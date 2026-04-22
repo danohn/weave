@@ -39,18 +39,18 @@ manager = ConnectionManager()
 
 
 async def broadcast_state(session: AsyncSession) -> None:
-    """Fetch current nodes + tokens and push to all connected WS clients."""
+    """Fetch current nodes + claims and push to all connected WS clients."""
     if not manager._connections:
         return
     # Deferred imports to avoid circular dependencies
-    from app.schemas.auth import PreAuthTokenResponse
+    from app.schemas.auth import DeviceClaimResponse
     from app.schemas.node import NodeAdminResponse
     from app.services import auth_service, node_service
 
     nodes = await node_service.list_all_nodes(session)
-    tokens = await auth_service.list_tokens(session)
+    claims = await auth_service.list_claims(session)
     payload = {
-        "nodes":  [NodeAdminResponse.model_validate(n).model_dump(mode="json") for n in nodes],
-        "tokens": [PreAuthTokenResponse.model_validate(t).model_dump(mode="json") for t in tokens],
+        "nodes": [NodeAdminResponse.model_validate(n).model_dump(mode="json") for n in nodes],
+        "claims": [DeviceClaimResponse.model_validate(c).model_dump(mode="json") for c in claims],
     }
     await manager.broadcast(payload)

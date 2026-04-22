@@ -15,6 +15,13 @@ class NodeStatus(str, enum.Enum):
     OFFLINE = "OFFLINE"
 
 
+class DeviceClaimStatus(str, enum.Enum):
+    UNCLAIMED = "UNCLAIMED"
+    CLAIMED = "CLAIMED"
+    ACTIVE = "ACTIVE"
+    REVOKED = "REVOKED"
+
+
 class Node(Base):
     __tablename__ = "nodes"
 
@@ -42,22 +49,34 @@ class Node(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
-    auth_token: Mapped[str] = mapped_column(String, unique=True, nullable=False)
+    auth_token_hash: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    auth_token_prefix: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    auth_token_issued_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    device_claim_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("device_claims.id"), nullable=True
+    )
 
 
-class PreAuthToken(Base):
-    __tablename__ = "preauth_tokens"
+class DeviceClaim(Base):
+    __tablename__ = "device_claims"
 
     id: Mapped[str] = mapped_column(
         String, primary_key=True, default=lambda: str(uuid.uuid4())
     )
+    device_id: Mapped[str] = mapped_column(String, unique=True, nullable=False, index=True)
+    site_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    expected_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    site_subnet: Mapped[str | None] = mapped_column(String, nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    status: Mapped[DeviceClaimStatus] = mapped_column(
+        Enum(DeviceClaimStatus), nullable=False, default=DeviceClaimStatus.UNCLAIMED
+    )
     token_hash: Mapped[str] = mapped_column(String, unique=True, nullable=False, index=True)
     token_prefix: Mapped[str] = mapped_column(String, nullable=False)
-    label: Mapped[str] = mapped_column(String, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
-    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    used_by_node_id: Mapped[str | None] = mapped_column(
-        String, ForeignKey("nodes.id"), nullable=True
-    )
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    claimed_by_node_id: Mapped[str | None] = mapped_column(String, nullable=True)

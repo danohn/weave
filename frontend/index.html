@@ -87,25 +87,27 @@
     </table>
   </div>
 
-  <!-- Pre-auth Tokens -->
+  <!-- Device Claims -->
   <div class="section-head" style="margin-top: 28px;">
-    <div class="section-title">Pre-auth Tokens</div>
-    <button class="btn btn-ghost" id="new-token-btn" disabled>+ New Token</button>
+    <div class="section-title">Bootstrap Claims</div>
+    <button class="btn btn-ghost" id="new-claim-btn" disabled>+ New Claim</button>
   </div>
 
   <div class="table-shell">
     <table>
       <thead>
         <tr>
-          <th>Label</th>
-          <th>Token</th>
+          <th>Device ID</th>
+          <th>Expected Name</th>
+          <th>Site</th>
+          <th>Claim Token</th>
           <th>Created</th>
           <th>Status</th>
           <th>Actions</th>
         </tr>
       </thead>
-      <tbody id="tokens-tbody">
-        <tr><td colspan="5">
+      <tbody id="claims-tbody">
+        <tr><td colspan="7">
           <div class="placeholder">Loading…</div>
         </td></tr>
       </tbody>
@@ -126,32 +128,51 @@
   </div>
 </div>
 
-<!-- ── New token modal ────────────────────────────────────────────────── -->
-<div class="overlay" id="token-overlay">
+<!-- ── New claim modal ────────────────────────────────────────────────── -->
+<div class="overlay" id="claim-overlay">
   <div class="modal">
-    <div class="modal-title">New Pre-auth Token</div>
-    <div class="modal-desc">Single-use. The node will auto-activate on registration without manual approval.</div>
+    <div class="modal-title">New Bootstrap Claim</div>
+    <div class="modal-desc">Single-use. A claimed node will auto-activate and link back to this inventory record.</div>
     <div class="modal-field">
-      <label for="token-label-inp">Label</label>
-      <input id="token-label-inp" type="text" placeholder="e.g. sdn-4 cloud-init" autocomplete="off">
+      <label for="claim-device-id-inp">Device ID</label>
+      <input id="claim-device-id-inp" type="text" placeholder="e.g. branch-sydney-01" autocomplete="off" spellcheck="false">
+    </div>
+    <div class="modal-field">
+      <label for="claim-expected-name-inp">Expected Node Name</label>
+      <input id="claim-expected-name-inp" type="text" placeholder="e.g. branch-sydney" autocomplete="off" spellcheck="false">
+    </div>
+    <div class="modal-field">
+      <label for="claim-site-name-inp">Site Name</label>
+      <input id="claim-site-name-inp" type="text" placeholder="e.g. sydney" autocomplete="off" spellcheck="false">
+    </div>
+    <div class="modal-field">
+      <label for="claim-site-subnet-inp">Site Subnet</label>
+      <input id="claim-site-subnet-inp" type="text" placeholder="e.g. 192.168.1.0/24" autocomplete="off" spellcheck="false">
     </div>
     <div class="modal-footer">
-      <button class="btn btn-ghost"   id="token-cancel">Cancel</button>
-      <button class="btn btn-primary" id="token-create">Create</button>
+      <button class="btn btn-ghost"   id="claim-cancel">Cancel</button>
+      <button class="btn btn-primary" id="claim-create">Create</button>
     </div>
   </div>
 </div>
 
-<!-- ── Reveal token modal ─────────────────────────────────────────────── -->
+<!-- ── Reveal claim modal ─────────────────────────────────────────────── -->
 <div class="overlay" id="reveal-overlay">
   <div class="modal">
-    <div class="modal-title">Token Created</div>
-    <div class="modal-desc">Copy this token now — <strong>it won't be shown again.</strong></div>
+    <div class="modal-title">Claim Created</div>
+    <div class="modal-desc">Copy this claim token now — <strong>it won't be shown again.</strong></div>
     <div class="modal-field">
-      <label>Token</label>
+      <label>Claim Token</label>
       <div class="token-reveal-row">
         <input id="reveal-token-inp" type="text" readonly spellcheck="false" autocomplete="off">
         <button class="btn btn-ghost" id="reveal-copy-btn">Copy</button>
+      </div>
+    </div>
+    <div class="modal-field">
+      <label>Install Command</label>
+      <div class="install-command-row">
+        <textarea id="reveal-command-inp" readonly spellcheck="false"></textarea>
+        <button class="btn btn-ghost" id="reveal-command-copy-btn">Copy</button>
       </div>
     </div>
     <div class="modal-footer">

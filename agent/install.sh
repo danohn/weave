@@ -39,7 +39,8 @@ Required:
 
 Optional:
   --node-name NAME        Node name (default: hostname)
-  --preauth-token TOKEN   Pre-auth token for automatic activation
+  --claim-token TOKEN     Claim token for automatic activation
+  --preauth-token TOKEN   Deprecated alias for --claim-token
   --endpoint-port PORT    WireGuard listen port (default: 51820)
   --interface IFACE       WireGuard interface name (default: wg0)
   --heartbeat-interval N  Heartbeat interval in seconds (default: 30)
@@ -57,7 +58,7 @@ fi
 # ── Argument parsing ──────────────────────────────────────────────────────────
 CONTROLLER_URL=""
 NODE_NAME="$(hostname)"
-PREAUTH_TOKEN=""
+CLAIM_TOKEN=""
 ENDPOINT_PORT="51820"
 INTERFACE="wg0"
 HEARTBEAT_INTERVAL="30"
@@ -68,7 +69,8 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --controller-url)     CONTROLLER_URL="$2";     shift 2 ;;
     --node-name)          NODE_NAME="$2";           shift 2 ;;
-    --preauth-token)      PREAUTH_TOKEN="$2";       shift 2 ;;
+    --claim-token)        CLAIM_TOKEN="$2";         shift 2 ;;
+    --preauth-token)      CLAIM_TOKEN="$2";         shift 2 ;;
     --endpoint-port)      ENDPOINT_PORT="$2";       shift 2 ;;
     --interface)          INTERFACE="$2";           shift 2 ;;
     --heartbeat-interval) HEARTBEAT_INTERVAL="$2"; shift 2 ;;
@@ -151,7 +153,7 @@ chmod 700 /etc/weave
   printf 'INTERFACE=%s\n'           "$INTERFACE"
   printf 'HEARTBEAT_INTERVAL=%s\n'  "$HEARTBEAT_INTERVAL"
   printf 'PEER_POLL_INTERVAL=%s\n'  "$PEER_POLL_INTERVAL"
-  [[ -n "$PREAUTH_TOKEN" ]] && printf 'PREAUTH_TOKEN=%s\n' "$PREAUTH_TOKEN"
+  [[ -n "$CLAIM_TOKEN" ]] && printf 'CLAIM_TOKEN=%s\n' "$CLAIM_TOKEN"
 } > /etc/weave/agent.env
 chmod 600 /etc/weave/agent.env
 

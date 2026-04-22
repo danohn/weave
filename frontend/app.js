@@ -1,7 +1,7 @@
 // ── State ──────────────────────────────────────────────────────────────────
 const state = {
   nodes: [],
-  tokens: [],
+  claims: [],
   bgp: {},        // keyed by vpn_ip → { state, uptime, prefixes_received }
   connected: false,
   lastUpdated: null,
@@ -18,9 +18,9 @@ const currentUser  = get('current-user');
 const hdot         = get('hdot');
 const hlabel       = get('hlabel');
 const tbody        = get('tbody');
-const tokensBody   = get('tokens-tbody');
+const claimsBody   = get('claims-tbody');
 const updatedAt    = get('updated-at');
-const newTokenBtn  = get('new-token-btn');
+const newClaimBtn  = get('new-claim-btn');
 
 // Confirm modal
 const overlay  = get('overlay');
@@ -29,16 +29,21 @@ const mDesc    = get('m-desc');
 const mOk      = get('m-ok');
 const mCancel  = get('m-cancel');
 
-// New-token modal
-const tokenOverlay   = get('token-overlay');
-const tokenLabelInp  = get('token-label-inp');
-const tokenCancelBtn = get('token-cancel');
-const tokenCreateBtn = get('token-create');
+// New-claim modal
+const claimOverlay         = get('claim-overlay');
+const claimDeviceIdInp     = get('claim-device-id-inp');
+const claimExpectedNameInp = get('claim-expected-name-inp');
+const claimSiteNameInp     = get('claim-site-name-inp');
+const claimSiteSubnetInp   = get('claim-site-subnet-inp');
+const claimCancelBtn       = get('claim-cancel');
+const claimCreateBtn       = get('claim-create');
 
 // Reveal-token modal
 const revealOverlay  = get('reveal-overlay');
 const revealTokenInp = get('reveal-token-inp');
 const revealCopyBtn  = get('reveal-copy-btn');
+const revealCommandInp = get('reveal-command-inp');
+const revealCommandCopyBtn = get('reveal-command-copy-btn');
 const revealDoneBtn  = get('reveal-done-btn');
 
 // ── View helpers ───────────────────────────────────────────────────────────
@@ -83,14 +88,31 @@ async function api(path, opts = {}) {
 
 const fetchHealth    = ()    => api('/health');
 const fetchNodes     = ()    => api('/api/v1/nodes/');
-const fetchTokens    = ()    => api('/api/v1/auth/tokens');
+const fetchClaims    = ()    => api('/api/v1/auth/claims');
 const fetchBgpStatus = ()    => api('/api/v1/bgp/status');
 const activateNode  = id             => api(`/api/v1/nodes/${id}/activate`, { method: 'PATCH' });
 const revokeNode    = id             => api(`/api/v1/nodes/${id}/revoke`,   { method: 'DELETE' });
 const deleteNode    = id             => api(`/api/v1/nodes/${id}`,          { method: 'DELETE' });
 const updateSubnet  = (id, subnet)   => api(`/api/v1/nodes/${id}`,          { method: 'PATCH', body: JSON.stringify({ site_subnet: subnet || null }) });
-const createToken   = label          => api('/api/v1/auth/tokens', { method: 'POST', body: JSON.stringify({ label }) });
-const deleteToken   = id             => api(`/api/v1/auth/tokens/${id}`,    { method: 'DELETE' });
+const createClaim   = payload         => api('/api/v1/auth/claims', { method: 'POST', body: JSON.stringify(payload) });
+const revokeClaim   = id              => api(`/api/v1/auth/claims/${id}/revoke`, { method: 'POST' });
+const deleteClaim   = id              => api(`/api/v1/auth/claims/${id}`, { method: 'DELETE' });
+
+function buildInstallCommand(claim) {
+  const controllerUrl = location.origin;
+  const lines = [
+    'REF=main',
+    `curl -fsSL "https://raw.githubusercontent.com/danohn/weave/\${REF}/agent/install.sh" \\`,
+    '  | bash -s -- \\',
+    `      --controller-url ${shellEscape(controllerUrl)} \\`,
+    `      --claim-token ${shellEscape(claim.token)} \\`,
+  ];
+  if (claim.expected_name) {
+    lines.push(`      --node-name ${shellEscape(claim.expected_name)} \\`);
+  }
+  lines.push('      --repo-ref "${REF}"');
+  return lines.join('\n');
+}
 
 // ── WebSocket ──────────────────────────────────────────────────────────────
 let ws = null;
@@ -110,7 +132,7 @@ function openWebSocket() {
 
   ws.onmessage = ev => {
     const data = JSON.parse(ev.data);
-    applyState(data.nodes, data.tokens);
+    applyState(data.nodes, data.claims || []);
   };
 
   ws.onclose = ev => {
@@ -156,17 +178,17 @@ function stopBgpPoll() {
 }
 
 // ── Apply state from WS message or HTTP fetch ──────────────────────────────
-function applyState(nodes, tokens) {
+function applyState(nodes, claims) {
   const wasConnected = state.connected;
   state.nodes       = nodes;
-  state.tokens      = tokens;
+  state.claims      = claims;
   state.connected   = true;
   state.lastUpdated = new Date();
   setHealth(true, `${nodes.length} node${nodes.length !== 1 ? 's' : ''}`);
-  newTokenBtn.disabled = false;
+  newClaimBtn.disabled = false;
   renderStats();
   renderNodes();
-  renderTokens();
+  renderClaims();
   renderTimestamp();
   if (!wasConnected) startBgpPoll();
 }
@@ -174,13 +196,13 @@ function applyState(nodes, tokens) {
 // ── HTTP refresh (used on connect and as WS fallback) ──────────────────────
 async function refresh() {
   try {
-    const [health, nodes, tokens] = await Promise.all([fetchHealth(), fetchNodes(), fetchTokens()]);
-    if (!nodes || !tokens) return; // 401 already handled in api()
-    applyState(nodes, tokens);
+    const [health, nodes, claims] = await Promise.all([fetchHealth(), fetchNodes(), fetchClaims()]);
+    if (!nodes || !claims) return; // 401 already handled in api()
+    applyState(nodes, claims);
     setHealth(true, `${health.node_count} node${health.node_count !== 1 ? 's' : ''}`);
   } catch (err) {
     state.connected = false;
-    newTokenBtn.disabled = true;
+    newClaimBtn.disabled = true;
     setHealth(false, 'Error');
     toast(err.message, 'err');
   }
@@ -256,31 +278,40 @@ function renderNodes() {
   }).join('');
 }
 
-function renderTokens() {
-  if (!state.tokens.length) {
-    tokensBody.innerHTML = `<tr><td colspan="5"><div class="placeholder">No tokens yet — create one to enable zero-touch provisioning</div></td></tr>`;
+function renderClaims() {
+  if (!state.claims.length) {
+    claimsBody.innerHTML = `<tr><td colspan="7"><div class="placeholder">No claims yet — create one to enroll a node with a one-time bootstrap token</div></td></tr>`;
     return;
   }
 
-  tokensBody.innerHTML = state.tokens.map(t => {
-    const usedNode = t.used_by_node_id
-      ? (state.nodes.find(n => n.id === t.used_by_node_id)?.name ?? t.used_by_node_id.slice(0, 8) + '…')
+  claimsBody.innerHTML = state.claims.map(c => {
+    const claimedNode = c.claimed_by_node_id
+      ? (state.nodes.find(n => n.id === c.claimed_by_node_id)?.name ?? c.claimed_by_node_id.slice(0, 8) + '…')
       : null;
 
-    const statusBadge = usedNode
-      ? `<span class="badge badge-used"><span class="badge-pip"></span>${e(usedNode)}</span>`
-      : `<span class="badge badge-unused"><span class="badge-pip"></span>Unused</span>`;
+    let statusBadge = badge(c.status);
+    if (claimedNode && (c.status === 'CLAIMED' || c.status === 'ACTIVE')) {
+      statusBadge += ` <span class="claim-meta">by ${e(claimedNode)}</span>`;
+    }
 
-    const deleteBtn = `<button class="row-btn" onclick="doDeleteToken('${e(t.id)}','${e(t.label)}')">Delete</button>`;
+    const actions = [];
+    if (c.status !== 'REVOKED' && c.status !== 'ACTIVE') {
+      actions.push(`<button class="row-btn" onclick="doRevokeClaim('${e(c.id)}','${e(c.device_id)}')">Revoke</button>`);
+    }
+    if (c.status === 'UNCLAIMED') {
+      actions.push(`<button class="row-btn" onclick="doDeleteClaim('${e(c.id)}','${e(c.device_id)}')">Delete</button>`);
+    }
 
     return `<tr>
-      <td class="td-name">${e(t.label)}</td>
+      <td class="td-name">${e(c.device_id)}</td>
+      <td>${c.expected_name ? e(c.expected_name) : '<span class="td-empty">Any</span>'}</td>
+      <td>${c.site_name ? e(c.site_name) : '<span class="td-empty">—</span>'}</td>
       <td>
-        <span class="token-str">${e(t.token_prefix)}••••••••••••••••</span>
+        <span class="token-str">${e(c.token_prefix)}••••••••••••••••</span>
       </td>
-      <td class="ts-warm">${relTime(t.created_at)}</td>
+      <td class="ts-warm">${relTime(c.created_at)}</td>
       <td>${statusBadge}</td>
-      <td class="td-actions">${deleteBtn}</td>
+      <td class="td-actions">${actions.join('')}</td>
     </tr>`;
   }).join('');
 }
@@ -305,6 +336,10 @@ function bgpBadge(info) {
 function e(str) {
   return String(str)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function shellEscape(str) {
+  return `'${String(str).replace(/'/g, `'\"'\"'`)}'`;
 }
 
 function relTime(iso) {
@@ -399,13 +434,24 @@ subnetSaveBtn.addEventListener('click', async () => {
   }
 });
 
-// ── Token actions ──────────────────────────────────────────────────────────
-function doDeleteToken(id, label) {
+// ── Claim actions ──────────────────────────────────────────────────────────
+function doRevokeClaim(id, deviceId) {
   confirm(
-    'Delete token',
-    `Delete token <strong>${e(label)}</strong>? It will no longer be valid for registration.`,
+    'Revoke claim',
+    `Revoke claim <strong>${e(deviceId)}</strong>? It will no longer be usable for node enrollment.`,
     async () => {
-      try { await deleteToken(id); toast(`Token "${label}" deleted`); }
+      try { await revokeClaim(id); toast(`Claim "${deviceId}" revoked`); }
+      catch (err) { toast(err.message, 'err'); }
+    }
+  );
+}
+
+function doDeleteClaim(id, deviceId) {
+  confirm(
+    'Delete claim',
+    `Delete claim <strong>${e(deviceId)}</strong>? Its bootstrap token will stop working immediately.`,
+    async () => {
+      try { await deleteClaim(id); toast(`Claim "${deviceId}" deleted`); }
       catch (err) { toast(err.message, 'err'); }
     }
   );
@@ -427,32 +473,47 @@ mOk.addEventListener('click', async () => { const cb = _confirmCb; closeModal();
 mCancel.addEventListener('click', closeModal);
 overlay.addEventListener('click', ev => { if (ev.target === overlay) closeModal(); });
 
-// ── New-token modal ────────────────────────────────────────────────────────
-newTokenBtn.addEventListener('click', () => {
-  tokenLabelInp.value = '';
-  tokenOverlay.classList.add('open');
-  setTimeout(() => tokenLabelInp.focus(), 50);
+// ── New-claim modal ────────────────────────────────────────────────────────
+newClaimBtn.addEventListener('click', () => {
+  claimDeviceIdInp.value = '';
+  claimExpectedNameInp.value = '';
+  claimSiteNameInp.value = '';
+  claimSiteSubnetInp.value = '';
+  claimOverlay.classList.add('open');
+  setTimeout(() => claimDeviceIdInp.focus(), 50);
 });
 
-tokenCancelBtn.addEventListener('click', () => tokenOverlay.classList.remove('open'));
-tokenOverlay.addEventListener('click', ev => { if (ev.target === tokenOverlay) tokenOverlay.classList.remove('open'); });
-tokenLabelInp.addEventListener('keydown', ev => { if (ev.key === 'Enter') tokenCreateBtn.click(); });
+function closeClaimModal() {
+  claimOverlay.classList.remove('open');
+}
 
-tokenCreateBtn.addEventListener('click', async () => {
-  const label = tokenLabelInp.value.trim();
-  if (!label) { tokenLabelInp.focus(); return; }
-  tokenCreateBtn.disabled = true;
+claimCancelBtn.addEventListener('click', closeClaimModal);
+claimOverlay.addEventListener('click', ev => { if (ev.target === claimOverlay) closeClaimModal(); });
+[claimDeviceIdInp, claimExpectedNameInp, claimSiteNameInp, claimSiteSubnetInp].forEach(inp => {
+  inp.addEventListener('keydown', ev => { if (ev.key === 'Enter') claimCreateBtn.click(); });
+});
+
+claimCreateBtn.addEventListener('click', async () => {
+  const deviceId = claimDeviceIdInp.value.trim();
+  if (!deviceId) { claimDeviceIdInp.focus(); return; }
+  claimCreateBtn.disabled = true;
   try {
-    const data = await createToken(label);
+    const data = await createClaim({
+      device_id: deviceId,
+      expected_name: claimExpectedNameInp.value.trim() || null,
+      site_name: claimSiteNameInp.value.trim() || null,
+      site_subnet: claimSiteSubnetInp.value.trim() || null,
+    });
     if (!data) return;
-    tokenOverlay.classList.remove('open');
+    closeClaimModal();
     revealTokenInp.value = data.token;
+    revealCommandInp.value = buildInstallCommand(data);
     revealOverlay.classList.add('open');
     setTimeout(() => revealTokenInp.select(), 50);
   } catch (err) {
     toast(err.message, 'err');
   } finally {
-    tokenCreateBtn.disabled = false;
+    claimCreateBtn.disabled = false;
   }
 });
 
@@ -463,9 +524,16 @@ revealCopyBtn.addEventListener('click', () => {
     .catch(() => { revealTokenInp.select(); toast('Select and copy manually', 'err'); });
 });
 
+revealCommandCopyBtn.addEventListener('click', () => {
+  navigator.clipboard.writeText(revealCommandInp.value)
+    .then(() => toast('Install command copied'))
+    .catch(() => { revealCommandInp.select(); toast('Select and copy manually', 'err'); });
+});
+
 revealDoneBtn.addEventListener('click', () => {
   revealOverlay.classList.remove('open');
   revealTokenInp.value = '';
+  revealCommandInp.value = '';
 });
 
 // ── Toast ──────────────────────────────────────────────────────────────────
@@ -503,6 +571,6 @@ boot();
 // Tick relative timestamps every 10s without any network call
 setInterval(() => {
   if (state.nodes.length)  renderNodes();
-  if (state.tokens.length) renderTokens();
+  if (state.claims.length) renderClaims();
   if (state.lastUpdated)   renderTimestamp();
 }, 10_000);

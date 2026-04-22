@@ -6,8 +6,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.security import generate_token, verify_token
-from app.db.models import Node, NodeStatus, PreAuthToken
+from app.core.security import issue_hashed_token, verify_token
+from app.db.models import DeviceClaim, DeviceClaimStatus, Node, NodeStatus
 from app.schemas.node import NodeRegisterRequest, NodeUpdateRequest
 
 
@@ -30,7 +30,7 @@ async def register_node(
     request: Request,
     data: NodeRegisterRequest,
     session: AsyncSession,
-) -> Node:
+) -> tuple[Node, str]:
     name_result = await session.execute(select(Node).where(Node.name == data.name))
     if name_result.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="Node name already exists")
@@ -43,50 +43,69 @@ async def register_node(
             status_code=409, detail="WireGuard public key already registered"
         )
 
-    # Pre-auth token validation
-    preauth_row: PreAuthToken | None = None
-    if data.preauth_token:
+    claim_token = data.claim_token or data.preauth_token
+    claim_row: DeviceClaim | None = None
+    if claim_token:
         candidate_result = await session.execute(
-            select(PreAuthToken).where(PreAuthToken.token_prefix == data.preauth_token[:8])
+            select(DeviceClaim).where(DeviceClaim.token_prefix == claim_token[:8])
         )
-        candidate = candidate_result.scalar_one_or_none()
-        if (
-            not candidate
-            or candidate.used_at is not None
-            or not verify_token(data.preauth_token, candidate.token_hash)
-        ):
-            raise HTTPException(status_code=401, detail="Invalid or already-used pre-auth token")
-        preauth_row = candidate
+        candidates = list(candidate_result.scalars().all())
+        claim_row = next(
+            (candidate for candidate in candidates if verify_token(claim_token, candidate.token_hash)),
+            None,
+        )
+        if claim_row is None:
+            raise HTTPException(status_code=401, detail="Invalid claim token")
+        if claim_row.status in {DeviceClaimStatus.CLAIMED, DeviceClaimStatus.ACTIVE}:
+            raise HTTPException(status_code=401, detail="Claim token has already been used")
+        if claim_row.status == DeviceClaimStatus.REVOKED:
+            raise HTTPException(status_code=401, detail="Claim token has been revoked")
+        expires_at = claim_row.expires_at
+        if expires_at and expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        if expires_at and expires_at <= datetime.now(timezone.utc):
+            raise HTTPException(status_code=401, detail="Claim token has expired")
+        if claim_row.expected_name and claim_row.expected_name != data.name:
+            raise HTTPException(status_code=409, detail="Node name does not match the device claim")
+        if claim_row.site_subnet and data.site_subnet and claim_row.site_subnet != data.site_subnet:
+            raise HTTPException(status_code=409, detail="Site subnet does not match the device claim")
     elif settings.REQUIRE_PREAUTH:
-        raise HTTPException(status_code=401, detail="A pre-auth token is required to register")
+        raise HTTPException(status_code=401, detail="A claim token is required to register")
 
     vpn_ip = await _allocate_vpn_ip(session)
     reflected_ip = request.client.host if request.client else None
     now = datetime.now(timezone.utc)
-    initial_status = NodeStatus.ACTIVE if preauth_row else NodeStatus.PENDING
+    initial_status = NodeStatus.ACTIVE if claim_row else NodeStatus.PENDING
+    auth_token, auth_token_prefix, auth_token_hash = issue_hashed_token()
     node = Node(
         name=data.name,
         wireguard_public_key=data.wireguard_public_key,
-        endpoint_ip=reflected_ip,
+        endpoint_ip=data.endpoint_ip or reflected_ip,
         endpoint_port=data.endpoint_port,
         vpn_ip=vpn_ip,
-        site_subnet=data.site_subnet,
+        site_subnet=claim_row.site_subnet if claim_row and claim_row.site_subnet else data.site_subnet,
         reflected_endpoint_ip=reflected_ip,
-        auth_token=generate_token(),
+        auth_token_hash=auth_token_hash,
+        auth_token_prefix=auth_token_prefix,
+        auth_token_issued_at=now,
+        device_claim_id=claim_row.id if claim_row else None,
         status=initial_status,
         last_seen=now,
         created_at=now,
     )
     session.add(node)
-    await session.flush()  # populate node.id before updating the token
+    await session.flush()
 
-    if preauth_row:
-        preauth_row.used_at = now
-        preauth_row.used_by_node_id = node.id
+    if claim_row:
+        claim_row.claimed_at = now
+        claim_row.claimed_by_node_id = node.id
+        claim_row.status = (
+            DeviceClaimStatus.ACTIVE if initial_status == NodeStatus.ACTIVE else DeviceClaimStatus.CLAIMED
+        )
 
     await session.commit()
     await session.refresh(node)
-    return node
+    return node, auth_token
 
 
 async def update_heartbeat(
@@ -143,6 +162,13 @@ async def activate_node(node_id: str, session: AsyncSession) -> Node:
             status_code=400, detail="Only PENDING nodes can be activated"
         )
     node.status = NodeStatus.ACTIVE
+    if node.device_claim_id:
+        claim_result = await session.execute(
+            select(DeviceClaim).where(DeviceClaim.id == node.device_claim_id)
+        )
+        claim = claim_result.scalar_one_or_none()
+        if claim and claim.status != DeviceClaimStatus.REVOKED:
+            claim.status = DeviceClaimStatus.ACTIVE
     await session.commit()
     await session.refresh(node)
     return node
@@ -154,6 +180,13 @@ async def revoke_node(node_id: str, session: AsyncSession) -> Node:
     if not node:
         raise HTTPException(status_code=404, detail="Node not found")
     node.status = NodeStatus.REVOKED
+    if node.device_claim_id:
+        claim_result = await session.execute(
+            select(DeviceClaim).where(DeviceClaim.id == node.device_claim_id)
+        )
+        claim = claim_result.scalar_one_or_none()
+        if claim:
+            claim.status = DeviceClaimStatus.REVOKED
     await session.commit()
     await session.refresh(node)
     return node
@@ -164,12 +197,13 @@ async def delete_node(node_id: str, session: AsyncSession) -> None:
     node = result.scalar_one_or_none()
     if not node:
         raise HTTPException(status_code=404, detail="Node not found")
-    # Nullify any preauth token FK referencing this node before deletion
-    token_result = await session.execute(
-        select(PreAuthToken).where(PreAuthToken.used_by_node_id == node_id)
+    claim_result = await session.execute(
+        select(DeviceClaim).where(DeviceClaim.claimed_by_node_id == node_id)
     )
-    for token in token_result.scalars().all():
-        token.used_by_node_id = None
+    for claim in claim_result.scalars().all():
+        claim.claimed_by_node_id = None
+        if claim.status != DeviceClaimStatus.REVOKED:
+            claim.status = DeviceClaimStatus.CLAIMED
     await session.delete(node)
     await session.commit()
 
@@ -188,3 +222,13 @@ async def update_node(node_id: str, data: NodeUpdateRequest, session: AsyncSessi
 async def list_all_nodes(session: AsyncSession) -> list[Node]:
     result = await session.execute(select(Node))
     return list(result.scalars().all())
+
+
+async def rotate_node_token(node: Node, session: AsyncSession) -> str:
+    plaintext, prefix, token_hash = issue_hashed_token()
+    node.auth_token_prefix = prefix
+    node.auth_token_hash = token_hash
+    node.auth_token_issued_at = datetime.now(timezone.utc)
+    await session.commit()
+    await session.refresh(node)
+    return plaintext

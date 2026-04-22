@@ -124,7 +124,7 @@ async def run() -> None:
             name=settings.NODE_NAME,
             wireguard_public_key=public_key,
             endpoint_port=settings.ENDPOINT_PORT,
-            preauth_token=settings.PREAUTH_TOKEN,
+            claim_token=settings.CLAIM_TOKEN or settings.PREAUTH_TOKEN,
         )
         node = NodeState(
             node_id=resp.id,

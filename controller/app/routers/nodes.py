@@ -12,6 +12,7 @@ from app.schemas.node import (
     NodeAdminResponse,
     NodeRegisterRequest,
     NodeRegisterResponse,
+    NodeTokenRotateResponse,
     NodeUpdateRequest,
 )
 from app.services import frr_service, node_service, wireguard_service
@@ -39,13 +40,16 @@ async def register(
     request: Request,
     session: AsyncSession = Depends(get_session),
 ) -> NodeRegisterResponse:
-    node = await node_service.register_node(request, data, session)
+    node, auth_token = await node_service.register_node(request, data, session)
     await broadcast_state(session)
     await broadcast_peers(session)
     if node.status == NodeStatus.ACTIVE:
         await _on_node_activated(node)
     return NodeRegisterResponse(
-        id=node.id, auth_token=node.auth_token, vpn_ip=node.vpn_ip
+        id=node.id,
+        auth_token=auth_token,
+        vpn_ip=node.vpn_ip,
+        device_claim_id=node.device_claim_id,
     )
 
 
@@ -86,6 +90,20 @@ async def go_offline(
         await frr_service.remove_neighbor(current_node)
         await broadcast_state(session)
         await broadcast_peers(session)
+
+
+@router.post("/{node_id}/rotate-token", response_model=NodeTokenRotateResponse)
+async def rotate_token(
+    node_id: str,
+    current_node: Node = Depends(get_current_node),
+    session: AsyncSession = Depends(get_session),
+) -> NodeTokenRotateResponse:
+    if str(current_node.id) != node_id:
+        raise HTTPException(status_code=403, detail="Token does not match node")
+    if current_node.status == NodeStatus.REVOKED:
+        raise HTTPException(status_code=403, detail="Node is revoked")
+    auth_token = await node_service.rotate_node_token(current_node, session)
+    return NodeTokenRotateResponse(auth_token=auth_token)
 
 
 @router.get("/{node_id}/frr-config", response_class=PlainTextResponse)

@@ -3,9 +3,9 @@ import logging
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.agent_ws import agent_manager
+from app.core.security import find_node_for_token
 from app.core.websocket import broadcast_state
 from app.core.agent_ws import broadcast_peers
 from app.db.base import AsyncSessionLocal
@@ -35,10 +35,7 @@ async def agent_ws(websocket: WebSocket, node_id: str) -> None:
 
     async with AsyncSessionLocal() as session:
         # Validate token and node ownership
-        result = await session.execute(
-            select(Node).where(Node.auth_token == token)
-        )
-        node = result.scalar_one_or_none()
+        node = await find_node_for_token(session, token)
 
         if not node or str(node.id) != node_id or node.status == NodeStatus.REVOKED:
             await websocket.close(code=4001)

@@ -324,6 +324,10 @@ td.td-subnet  { white-space: nowrap; }
 
 .badge-revoked { background: var(--gray-100);  color: var(--gray-400); text-decoration: line-through; }
 .badge-revoked .badge-pip { background: var(--gray-300); }
+.badge-unclaimed { background: var(--gray-100); color: var(--gray-600); }
+.badge-unclaimed .badge-pip { background: var(--gray-400); }
+.badge-claimed { background: var(--amber-bg); color: var(--amber-text); }
+.badge-claimed .badge-pip { background: var(--amber-pip); }
 
 /* BGP session status */
 .badge-bgp-up      { background: var(--green-bg);  color: var(--green-text); }
@@ -351,12 +355,12 @@ td.td-subnet  { white-space: nowrap; }
 .reach-ok  { background: var(--green-pip); }
 .reach-no  { background: var(--amber-pip); }
 
-/* Token status */
-.badge-unused { background: var(--gray-100); color: var(--gray-500); }
-.badge-unused .badge-pip { background: var(--gray-300); }
-
-.badge-used   { background: var(--green-bg);  color: var(--green-text); }
-.badge-used   .badge-pip { background: var(--green-pip); }
+.claim-meta {
+  display: inline-block;
+  margin-left: 6px;
+  color: var(--gray-500);
+  font-size: 11px;
+}
 
 /* ── NAT pill ─────────────────────────────────────────────── */
 .nat-pill {
@@ -515,6 +519,27 @@ td.td-subnet  { white-space: nowrap; }
   flex: 1;
   font-family: 'SF Mono', 'Fira Code', monospace;
   font-size: 11px;
+}
+
+.install-command-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.install-command-row textarea {
+  flex: 1;
+  min-height: 124px;
+  resize: vertical;
+  padding: 10px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  border: 1px solid var(--gray-200);
+  border-radius: 6px;
+  background: var(--gray-50);
+  color: var(--gray-700);
+  outline: none;
 }
 
 .modal-footer {

@@ -6,7 +6,7 @@ A WireGuard-based SD-WAN control plane with FRR-powered BGP route reflection and
 
 Weave has four moving parts:
 
-- **Controller**: FastAPI service that stores node state, allocates VPN IPs, validates pre-auth tokens, and serves peer lists to agents. It also runs FRR as a BGP route reflector on the overlay.
+- **Controller**: FastAPI service that stores node state, allocates VPN IPs, manages bootstrap device claims, and serves peer lists to agents. It also runs FRR as a BGP route reflector on the overlay.
 - **Agent**: lightweight daemon installed on each edge node. It registers with the controller, maintains WireGuard state, heartbeats periodically, and applies FRR configuration when present.
 - **Frontend**: static admin dashboard served by nginx. It talks to the controller over the same origin using the REST API and admin WebSocket.
 - **Reverse proxy**: Traefik routes browser/API traffic to nginx or the controller based on path, while WireGuard UDP traffic goes directly to the controller host on port `51820`.
@@ -40,7 +40,7 @@ weave/
 The shortest path to a working deployment is:
 
 1. Start the controller stack with Docker and Traefik.
-2. Generate a pre-auth token from the controller.
+2. Generate a device claim from the controller.
 3. Bootstrap an edge node with the install script.
 4. Confirm the node appears in the dashboard and `wg show` lists peers.
 
@@ -120,7 +120,7 @@ These can be set in `controller/.env` for local development or passed as environ
 | `ADMIN_TOKEN` | `changeme-admin-token` | Bearer token for all admin endpoints |
 | `DATABASE_URL` | `sqlite+aiosqlite:///./weave.db` | SQLAlchemy async DB URL |
 | `VPN_SUBNET` | `10.0.0.0/24` | Overlay subnet to allocate VPN IPs from |
-| `REQUIRE_PREAUTH` | `true` | Reject registrations that don't supply a valid pre-auth token |
+| `REQUIRE_PREAUTH` | `true` | Reject registrations that don't supply a valid claim token |
 | `STALE_THRESHOLD_SECONDS` | `75` | Seconds without a heartbeat before a node is marked OFFLINE |
 | `STALE_CHECK_INTERVAL` | `15` | How often the expiry sweep runs |
 
@@ -135,14 +135,14 @@ uv run pytest -v
 
 ## Installing an edge node
 
-From the controller host (or anywhere with admin access), generate a pre-auth token for the new node:
+From the controller host (or anywhere with admin access), generate a bootstrap claim for the new node:
 
 ```bash
-curl -s -X POST https://<controller-host>/api/v1/auth/tokens \
+curl -s -X POST https://<controller-host>/api/v1/auth/claims \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"label": "sdn-3"}'
-# {"id": "...", "token": "abc123...", ...}
+  -d '{"device_id": "sdn-3", "expected_name": "sdn-3"}'
+# {"id": "...", "token": "abc123...", "status": "UNCLAIMED", ...}
 ```
 
 Then on the new node (as root), run:
@@ -153,11 +153,11 @@ curl -fsSL "https://raw.githubusercontent.com/danohn/weave/${REF}/agent/install.
   | bash -s -- \
       --controller-url https://<controller-host> \
       --node-name <name> \
-      --preauth-token <token> \
+      --claim-token <token> \
       --repo-ref "${REF}"
 ```
 
-The script installs the agent directly from GitHub — no local repo checkout required. Pinning both the script URL and `--repo-ref` to the same release tag keeps the bootstrap script, installed package, and systemd unit on the same revision. The node registers, auto-activates using the token, brings up WireGuard, and starts running as a systemd service.
+The script installs the agent directly from GitHub — no local repo checkout required. Pinning both the script URL and `--repo-ref` to the same release tag keeps the bootstrap script, installed package, and systemd unit on the same revision. The node registers, auto-activates using the claim, brings up WireGuard, and starts running as a systemd service.
 
 Useful commands on an edge node:
 
@@ -234,27 +234,31 @@ Node endpoints require `Authorization: Bearer <auth_token>` (returned at registr
 
 ---
 
-### Pre-auth tokens
+### Device claims
 
-#### `POST /api/v1/auth/tokens` (admin)
+#### `POST /api/v1/auth/claims` (admin)
 
-Create a single-use token. When a node registers with this token it is auto-activated without manual intervention.
+Create a single-use bootstrap claim. When a node registers with this claim token it is auto-activated and linked back to the claim record.
 
 ```bash
-curl -s -X POST http://localhost:8000/api/v1/auth/tokens \
+curl -s -X POST http://localhost:8000/api/v1/auth/claims \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"label": "sdn-4 cloud-init"}'
-# {"id": "...", "token": "abc123...", "label": "sdn-4 cloud-init", "used_at": null, ...}
+  -d '{"device_id": "sdn-4", "expected_name": "sdn-4"}'
+# {"id": "...", "token": "abc123...", "device_id": "sdn-4", "claimed_at": null, ...}
 ```
 
-#### `GET /api/v1/auth/tokens` (admin)
+#### `GET /api/v1/auth/claims` (admin)
 
-List all tokens with their used/unused status.
+List all claims with their status and claim metadata.
 
-#### `DELETE /api/v1/auth/tokens/{id}` (admin)
+#### `POST /api/v1/auth/claims/{id}/revoke` (admin)
 
-Delete an unused token. Returns `400` if the token has already been used.
+Revoke a claim so it can no longer be used for enrollment.
+
+#### `DELETE /api/v1/auth/claims/{id}` (admin)
+
+Delete an unused claim. Returns `400` if the claim has already been used.
 
 ---
 
@@ -264,7 +268,7 @@ Delete an unused token. Returns `400` if the token has already been used.
 
 Register a new edge node. Returns the node's bearer token and allocated VPN IP.
 
-If `REQUIRE_PREAUTH=true` (the default), a valid `preauth_token` must be supplied and the node is immediately `ACTIVE`. Without a pre-auth token the request is rejected.
+If `REQUIRE_PREAUTH=true` (the default), a valid `claim_token` must be supplied and the node is immediately `ACTIVE`. Without a claim token the request is rejected.
 
 ```bash
 curl -s -X POST http://localhost:8000/api/v1/nodes/register \
@@ -273,9 +277,9 @@ curl -s -X POST http://localhost:8000/api/v1/nodes/register \
     "name": "sdn-4",
     "wireguard_public_key": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
     "endpoint_port": 51820,
-    "preauth_token": "abc123..."
+    "claim_token": "abc123..."
   }'
-# {"id": "...", "auth_token": "...", "vpn_ip": "10.0.0.4"}
+# {"id": "...", "auth_token": "...", "vpn_ip": "10.0.0.4", "device_claim_id": "..."}
 ```
 
 > The endpoint IP is not sent by the agent — the controller infers it from the source address of the HTTP request.
@@ -292,12 +296,16 @@ curl -s -X POST http://localhost:8000/api/v1/nodes/<id>/heartbeat \
 
 #### `GET /api/v1/nodes/{id}/peers`
 
-Returns all visible peers for this node (excludes self, `PENDING`, and `REVOKED` nodes). `OFFLINE` nodes are still included so their WireGuard configuration can recover quickly when they come back. The `preferred_endpoint` is always the IP the controller observed the peer connecting from.
+Returns all visible peers for this node (excludes self, `PENDING`, `OFFLINE`, and `REVOKED` nodes). The `preferred_endpoint` is always the IP the controller observed the peer connecting from.
 
 ```bash
 curl -s http://localhost:8000/api/v1/nodes/<id>/peers \
   -H "Authorization: Bearer <auth_token>"
 ```
+
+#### `POST /api/v1/nodes/{id}/rotate-token`
+
+Rotate the node's operational bearer token. The old token stops working immediately.
 
 #### `PATCH /api/v1/nodes/{id}/activate` (admin)
 
@@ -334,14 +342,14 @@ curl http://localhost:8000/health
 
 #### `GET /ws?token=<ADMIN_TOKEN>`
 
-Real-time feed of node and token state. The dashboard connects here automatically. On connect the server immediately pushes current state; subsequent messages are broadcast on any mutation (registration, heartbeat, activation, expiry, etc.).
+Real-time feed of node and claim state. The dashboard connects here automatically. On connect the server immediately pushes current state; subsequent messages are broadcast on any mutation (registration, heartbeat, activation, expiry, etc.).
 
 Message format:
 
 ```json
 {
   "nodes":  [ ...NodeAdminResponse... ],
-  "tokens": [ ...PreAuthTokenResponse... ]
+  "claims": [ ...DeviceClaimResponse... ]
 }
 ```
 
@@ -350,7 +358,7 @@ Message format:
 ## Node lifecycle
 
 ```
-POST /register (with preauth token)  ->  ACTIVE   (auto-activated)
+POST /register (with claim token)    ->  ACTIVE   (auto-activated)
 POST /register (no token)            ->  PENDING  (requires REQUIRE_PREAUTH=false)
                                             |
                              PATCH /activate (admin)
@@ -360,7 +368,7 @@ POST /register (no token)            ->  PENDING  (requires REQUIRE_PREAUTH=fals
                           clean shutdown /     \ no heartbeat for 75s
                      (agent sends SIGTERM)       (crash or network loss)
                                         /         \
-                                     OFFLINE  -- kept in peer lists for fast recovery
+                                     OFFLINE  -- excluded from peer lists until heartbeat recovery
                                             |
                               heartbeat received
                                             |

@@ -1,19 +1,23 @@
-"""Tests for pre-auth token management and token-gated node registration."""
+"""Tests for device-claim management and claim-gated node registration."""
+from datetime import datetime, timedelta, timezone
+
 import pytest
 from httpx import AsyncClient
 
 ADMIN_TOKEN = "test-admin-token"
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-async def create_token(client: AsyncClient, label: str = "test-token") -> dict:
+async def create_claim(client: AsyncClient, **overrides) -> dict:
+    payload = {
+        "device_id": "branch-sydney-01",
+        "site_name": "sydney",
+        "expected_name": "branch-sydney",
+        "site_subnet": "192.168.10.0/24",
+        **overrides,
+    }
     resp = await client.post(
-        "/api/v1/auth/tokens",
-        json={"label": label},
+        "/api/v1/auth/claims",
+        json=payload,
         headers={"Authorization": f"Bearer {ADMIN_TOKEN}"},
     )
     assert resp.status_code == 201
@@ -24,120 +28,92 @@ def node_payload(**overrides) -> dict:
     defaults = {
         "name": "branch-sydney",
         "wireguard_public_key": "abc123pubkey==",
-        "endpoint_ip": "1.2.3.4",
         "endpoint_port": 51820,
     }
     return {**defaults, **overrides}
 
 
-# ---------------------------------------------------------------------------
-# Token CRUD
-# ---------------------------------------------------------------------------
-
-
-async def test_create_token(client: AsyncClient):
-    data = await create_token(client, label="batch-2025-04")
+async def test_create_claim(client: AsyncClient):
+    data = await create_claim(client)
     assert "id" in data
-    assert "token" in data          # plaintext returned once at creation
-    assert "token_prefix" in data
-    assert data["label"] == "batch-2025-04"
-    assert data["used_at"] is None
-    assert data["used_by_node_id"] is None
-    assert len(data["token"]) > 20
+    assert "token" in data
+    assert data["device_id"] == "branch-sydney-01"
+    assert data["status"] == "UNCLAIMED"
+    assert data["claimed_at"] is None
+    assert data["claimed_by_node_id"] is None
     assert data["token"].startswith(data["token_prefix"])
 
 
-async def test_create_token_requires_admin(client: AsyncClient):
+async def test_create_claim_requires_admin(client: AsyncClient):
     resp = await client.post(
-        "/api/v1/auth/tokens",
-        json={"label": "x"},
+        "/api/v1/auth/claims",
+        json={"device_id": "x"},
         headers={"Authorization": "Bearer wrong"},
     )
     assert resp.status_code == 401
 
 
-async def test_list_tokens(client: AsyncClient):
-    await create_token(client, label="t1")
-    await create_token(client, label="t2")
+async def test_list_claims(client: AsyncClient):
+    await create_claim(client, device_id="claim-1")
+    await create_claim(client, device_id="claim-2", expected_name="node-2")
 
     resp = await client.get(
-        "/api/v1/auth/tokens",
+        "/api/v1/auth/claims",
         headers={"Authorization": f"Bearer {ADMIN_TOKEN}"},
     )
     assert resp.status_code == 200
-    tokens = resp.json()
-    assert len(tokens) == 2
-    # List response must not expose the plaintext token
-    for t in tokens:
-        assert "token" not in t
-        assert "token_prefix" in t
-        assert len(t["token_prefix"]) == 8
+    claims = resp.json()
+    assert len(claims) == 2
+    for claim in claims:
+        assert "token" not in claim
+        assert "token_prefix" in claim
 
 
-async def test_list_tokens_requires_admin(client: AsyncClient):
-    resp = await client.get(
-        "/api/v1/auth/tokens",
-        headers={"Authorization": "Bearer wrong"},
-    )
-    assert resp.status_code == 401
-
-
-async def test_delete_unused_token(client: AsyncClient):
-    token = await create_token(client)
+async def test_delete_unused_claim(client: AsyncClient):
+    claim = await create_claim(client)
 
     resp = await client.delete(
-        f"/api/v1/auth/tokens/{token['id']}",
+        f"/api/v1/auth/claims/{claim['id']}",
         headers={"Authorization": f"Bearer {ADMIN_TOKEN}"},
     )
     assert resp.status_code == 204
 
-    # Should be gone
-    list_resp = await client.get(
-        "/api/v1/auth/tokens",
-        headers={"Authorization": f"Bearer {ADMIN_TOKEN}"},
-    )
-    assert list_resp.json() == []
 
-
-async def test_delete_used_token_rejected(client: AsyncClient):
-    token = await create_token(client)
-
-    # Consume the token via registration
+async def test_delete_used_claim_rejected(client: AsyncClient):
+    claim = await create_claim(client)
     await client.post(
         "/api/v1/nodes/register",
-        json=node_payload(preauth_token=token["token"]),
+        json=node_payload(claim_token=claim["token"]),
     )
 
     resp = await client.delete(
-        f"/api/v1/auth/tokens/{token['id']}",
+        f"/api/v1/auth/claims/{claim['id']}",
         headers={"Authorization": f"Bearer {ADMIN_TOKEN}"},
     )
     assert resp.status_code == 400
 
 
-async def test_delete_nonexistent_token(client: AsyncClient):
-    resp = await client.delete(
-        "/api/v1/auth/tokens/does-not-exist",
+async def test_revoke_claim(client: AsyncClient):
+    claim = await create_claim(client)
+
+    resp = await client.post(
+        f"/api/v1/auth/claims/{claim['id']}/revoke",
         headers={"Authorization": f"Bearer {ADMIN_TOKEN}"},
     )
-    assert resp.status_code == 404
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "REVOKED"
 
 
-# ---------------------------------------------------------------------------
-# Registration with pre-auth token
-# ---------------------------------------------------------------------------
-
-
-async def test_register_with_valid_token_activates_immediately(client: AsyncClient):
-    token = await create_token(client)
+async def test_register_with_valid_claim_activates_immediately(client: AsyncClient):
+    claim = await create_claim(client)
 
     resp = await client.post(
         "/api/v1/nodes/register",
-        json=node_payload(preauth_token=token["token"]),
+        json=node_payload(claim_token=claim["token"]),
     )
     assert resp.status_code == 201
+    assert resp.json()["device_claim_id"] == claim["id"]
 
-    # Node should be ACTIVE without admin intervention
     node_id = resp.json()["id"]
     node_token = resp.json()["auth_token"]
     hb = await client.post(
@@ -147,54 +123,76 @@ async def test_register_with_valid_token_activates_immediately(client: AsyncClie
     assert hb.json()["status"] == "ACTIVE"
 
 
-async def test_register_with_valid_token_marks_token_used(client: AsyncClient):
-    token = await create_token(client)
+async def test_register_with_claim_marks_claim_active(client: AsyncClient):
+    claim = await create_claim(client)
 
-    await client.post(
+    reg = await client.post(
         "/api/v1/nodes/register",
-        json=node_payload(preauth_token=token["token"]),
+        json=node_payload(claim_token=claim["token"]),
     )
+    assert reg.status_code == 201
 
     list_resp = await client.get(
-        "/api/v1/auth/tokens",
+        "/api/v1/auth/claims",
         headers={"Authorization": f"Bearer {ADMIN_TOKEN}"},
     )
-    t = list_resp.json()[0]
-    assert t["used_at"] is not None
-    assert t["used_by_node_id"] is not None
+    stored = next(x for x in list_resp.json() if x["id"] == claim["id"])
+    assert stored["status"] == "ACTIVE"
+    assert stored["claimed_at"] is not None
+    assert stored["claimed_by_node_id"] == reg.json()["id"]
 
 
-async def test_register_token_cannot_be_reused(client: AsyncClient):
-    token = await create_token(client)
+async def test_register_claim_cannot_be_reused(client: AsyncClient):
+    claim = await create_claim(client)
 
     await client.post(
         "/api/v1/nodes/register",
-        json=node_payload(preauth_token=token["token"]),
+        json=node_payload(claim_token=claim["token"]),
     )
 
     resp = await client.post(
         "/api/v1/nodes/register",
-        json=node_payload(name="node2", wireguard_public_key="key2==", preauth_token=token["token"]),
+        json=node_payload(
+            name="node2",
+            wireguard_public_key="key2==",
+            claim_token=claim["token"],
+        ),
     )
     assert resp.status_code == 401
-    assert "already-used" in resp.json()["detail"]
+    assert "already been used" in resp.json()["detail"]
 
 
-async def test_register_invalid_token_rejected(client: AsyncClient):
+async def test_register_invalid_claim_rejected(client: AsyncClient):
     resp = await client.post(
         "/api/v1/nodes/register",
-        json=node_payload(preauth_token="totally-fake-token"),
+        json=node_payload(claim_token="totally-fake-token"),
     )
     assert resp.status_code == 401
 
 
-# ---------------------------------------------------------------------------
-# REQUIRE_PREAUTH enforcement (tested via a sub-app with the flag on)
-# ---------------------------------------------------------------------------
+async def test_register_rejects_name_mismatch(client: AsyncClient):
+    claim = await create_claim(client, expected_name="expected-name")
+    resp = await client.post(
+        "/api/v1/nodes/register",
+        json=node_payload(name="other-name", claim_token=claim["token"]),
+    )
+    assert resp.status_code == 409
+
+
+async def test_register_rejects_expired_claim(client: AsyncClient):
+    claim = await create_claim(
+        client, expires_at=(datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat()
+    )
+    resp = await client.post(
+        "/api/v1/nodes/register",
+        json=node_payload(claim_token=claim["token"]),
+    )
+    assert resp.status_code == 401
+    assert "expired" in resp.json()["detail"]
 
 
 @pytest.mark.require_preauth
-async def test_register_without_token_rejected_when_required(
+async def test_register_without_claim_rejected_when_required(
     client_require_preauth: AsyncClient,
 ):
     resp = await client_require_preauth.post(
@@ -202,23 +200,22 @@ async def test_register_without_token_rejected_when_required(
         json=node_payload(),
     )
     assert resp.status_code == 401
-    assert "pre-auth token is required" in resp.json()["detail"]
+    assert "claim token is required" in resp.json()["detail"]
 
 
 @pytest.mark.require_preauth
-async def test_register_with_token_accepted_when_required(
+async def test_register_with_claim_accepted_when_required(
     client_require_preauth: AsyncClient,
 ):
-    # Create a token using the preauth client (shares same DB via override)
-    token_resp = await client_require_preauth.post(
-        "/api/v1/auth/tokens",
-        json={"label": "required-test"},
+    claim_resp = await client_require_preauth.post(
+        "/api/v1/auth/claims",
+        json={"device_id": "required-test"},
         headers={"Authorization": f"Bearer {ADMIN_TOKEN}"},
     )
-    token = token_resp.json()["token"]
+    token = claim_resp.json()["token"]
 
     resp = await client_require_preauth.post(
         "/api/v1/nodes/register",
-        json=node_payload(preauth_token=token),
+        json=node_payload(claim_token=token),
     )
     assert resp.status_code == 201

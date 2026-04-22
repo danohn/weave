@@ -111,7 +111,7 @@ async def test_stale_node_marked_offline(client: AsyncClient, make_session):
 
     async with make_session() as db:
         expired = await node_service.expire_stale_nodes(db, threshold_seconds=120)
-    assert expired == 1
+    assert len(expired) == 1
 
     admin_resp = await client.get(
         "/api/v1/nodes/",
@@ -126,7 +126,7 @@ async def test_fresh_node_not_expired(client: AsyncClient, make_session):
 
     async with make_session() as db:
         expired = await node_service.expire_stale_nodes(db, threshold_seconds=120)
-    assert expired == 0
+    assert len(expired) == 0
 
 
 async def test_only_active_nodes_are_expired(client: AsyncClient, make_session):
@@ -158,7 +158,7 @@ async def test_only_active_nodes_are_expired(client: AsyncClient, make_session):
 
     async with make_session() as db:
         expired = await node_service.expire_stale_nodes(db, threshold_seconds=120)
-    assert expired == 0
+    assert len(expired) == 0
 
 
 async def test_offline_node_excluded_from_peers(client: AsyncClient, make_session):

@@ -144,6 +144,49 @@ async def test_heartbeat_invalid_token(client: AsyncClient):
     assert response.status_code == 401
 
 
+async def test_rotate_token_replaces_old_token(client: AsyncClient):
+    reg = await client.post("/api/v1/nodes/register", json=node_payload())
+    node_id = reg.json()["id"]
+    old_token = reg.json()["auth_token"]
+
+    rotate = await client.post(
+        f"/api/v1/nodes/{node_id}/rotate-token",
+        headers={"Authorization": f"Bearer {old_token}"},
+    )
+    assert rotate.status_code == 200
+    new_token = rotate.json()["auth_token"]
+    assert new_token != old_token
+
+    old_hb = await client.post(
+        f"/api/v1/nodes/{node_id}/heartbeat",
+        headers={"Authorization": f"Bearer {old_token}"},
+    )
+    assert old_hb.status_code == 401
+
+    new_hb = await client.post(
+        f"/api/v1/nodes/{node_id}/heartbeat",
+        headers={"Authorization": f"Bearer {new_token}"},
+    )
+    assert new_hb.status_code == 200
+
+
+async def test_rotate_token_wrong_node_forbidden(client: AsyncClient):
+    reg1 = await client.post(
+        "/api/v1/nodes/register",
+        json=node_payload(name="node1", wireguard_public_key="key1=="),
+    )
+    reg2 = await client.post(
+        "/api/v1/nodes/register",
+        json=node_payload(name="node2", wireguard_public_key="key2=="),
+    )
+
+    response = await client.post(
+        f"/api/v1/nodes/{reg1.json()['id']}/rotate-token",
+        headers={"Authorization": f"Bearer {reg2.json()['auth_token']}"},
+    )
+    assert response.status_code == 403
+
+
 # ---------------------------------------------------------------------------
 # Admin: activate
 # ---------------------------------------------------------------------------
@@ -261,19 +304,19 @@ async def test_delete_node_frees_vpn_ip(client: AsyncClient):
     assert reg2.json()["vpn_ip"] == ip1
 
 
-async def test_delete_node_nullifies_preauth_token_reference(client: AsyncClient):
-    """Deleting a node clears used_by_node_id on the preauth token."""
-    token_resp = await client.post(
-        "/api/v1/auth/tokens",
-        json={"label": "delete-test"},
+async def test_delete_node_nullifies_claim_reference(client: AsyncClient):
+    """Deleting a node clears claimed_by_node_id on the device claim."""
+    claim_resp = await client.post(
+        "/api/v1/auth/claims",
+        json={"device_id": "delete-test"},
         headers={"Authorization": f"Bearer {ADMIN_TOKEN}"},
     )
-    token = token_resp.json()["token"]
-    token_id = token_resp.json()["id"]
+    token = claim_resp.json()["token"]
+    claim_id = claim_resp.json()["id"]
 
     reg = await client.post(
         "/api/v1/nodes/register",
-        json=node_payload(preauth_token=token),
+        json=node_payload(claim_token=token),
     )
     node_id = reg.json()["id"]
 
@@ -282,12 +325,12 @@ async def test_delete_node_nullifies_preauth_token_reference(client: AsyncClient
         headers={"Authorization": f"Bearer {ADMIN_TOKEN}"},
     )
 
-    tokens = await client.get(
-        "/api/v1/auth/tokens",
+    claims = await client.get(
+        "/api/v1/auth/claims",
         headers={"Authorization": f"Bearer {ADMIN_TOKEN}"},
     )
-    t = next(x for x in tokens.json() if x["id"] == token_id)
-    assert t["used_by_node_id"] is None
+    claim = next(x for x in claims.json() if x["id"] == claim_id)
+    assert claim["claimed_by_node_id"] is None
 
 
 async def test_delete_node_requires_admin(client: AsyncClient):

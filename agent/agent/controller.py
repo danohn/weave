@@ -41,15 +41,15 @@ class ControllerClient:
         name: str,
         wireguard_public_key: str,
         endpoint_port: int,
-        preauth_token: str | None = None,
+        claim_token: str | None = None,
     ) -> RegisterResponse:
         payload: dict = {
             "name": name,
             "wireguard_public_key": wireguard_public_key,
             "endpoint_port": endpoint_port,
         }
-        if preauth_token is not None:
-            payload["preauth_token"] = preauth_token
+        if claim_token is not None:
+            payload["claim_token"] = claim_token
         resp = await self._client.post(
             f"{self._base}/api/v1/nodes/register",
             json=payload,
@@ -73,6 +73,14 @@ class ControllerClient:
             timeout=5,
         )
         resp.raise_for_status()
+
+    async def rotate_token(self, node_id: str, token: str) -> str:
+        resp = await self._client.post(
+            f"{self._base}/api/v1/nodes/{node_id}/rotate-token",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        resp.raise_for_status()
+        return resp.json()["auth_token"]
 
     def peer_websocket(self, node_id: str, token: str):
         """Return a websockets connection context manager for the peer update stream.

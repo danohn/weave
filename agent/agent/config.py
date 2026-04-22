@@ -24,4 +24,5 @@ class Settings(BaseSettings):
     HEARTBEAT_INTERVAL: int = 30
     PEER_POLL_INTERVAL: int = 60
 
+    CLAIM_TOKEN: str | None = None
     PREAUTH_TOKEN: str | None = None
