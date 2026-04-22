@@ -1,6 +1,6 @@
 // ── State ──────────────────────────────────────────────────────────────────
 const state = {
-  url: '',
+  url: location.origin,
   token: '',
   nodes: [],
   tokens: [],
@@ -12,7 +12,6 @@ const state = {
 // ── DOM ────────────────────────────────────────────────────────────────────
 const get = id => document.getElementById(id);
 
-const inpUrl       = get('inp-url');
 const inpToken     = get('inp-token');
 const connectBtn   = get('connect-btn');
 const hdot         = get('hdot');
@@ -43,18 +42,12 @@ const revealDoneBtn  = get('reveal-done-btn');
 
 // ── Persistence ────────────────────────────────────────────────────────────
 (function loadConfig() {
-  const savedUrl   = localStorage.getItem('weave_url')   || '';
   const savedToken = localStorage.getItem('weave_token') || '';
-  inpUrl.value   = savedUrl   || (location.hostname !== '' ? location.origin : '');
-  inpToken.value = savedToken || '';
-  if (savedUrl && savedToken) {
-    state.url   = savedUrl.replace(/\/$/, '');
-    state.token = savedToken;
-  }
+  inpToken.value = savedToken;
+  if (savedToken) state.token = savedToken;
 })();
 
 function saveConfig() {
-  localStorage.setItem('weave_url',   state.url);
   localStorage.setItem('weave_token', state.token);
 }
 
@@ -485,22 +478,18 @@ function toast(msg, type = 'ok') {
 
 // ── Events ─────────────────────────────────────────────────────────────────
 connectBtn.addEventListener('click', () => {
-  const url   = inpUrl.value.trim().replace(/\/$/, '');
   const token = inpToken.value.trim();
-  if (!url)   { toast('Enter a server URL', 'err'); return; }
   if (!token) { toast('Enter an admin token', 'err'); return; }
-  state.url   = url;
   state.token = token;
   saveConfig();
   closeWebSocket();
   refresh().then(() => openWebSocket());
 });
 
-inpUrl.addEventListener('keydown',   ev => ev.key === 'Enter' && connectBtn.click());
 inpToken.addEventListener('keydown', ev => ev.key === 'Enter' && connectBtn.click());
 
 // ── Boot ───────────────────────────────────────────────────────────────────
-if (state.url && state.token) {
+if (state.token) {
   refresh().then(() => openWebSocket());
 }
 
