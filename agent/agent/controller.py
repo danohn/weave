@@ -32,6 +32,11 @@ def parse_peer(data: dict) -> Peer:
     return Peer(**{k: v for k, v in data.items() if k in known})
 
 
+def parse_register_response(data: dict) -> RegisterResponse:
+    known = {field for field in RegisterResponse.__dataclass_fields__}
+    return RegisterResponse(**{k: v for k, v in data.items() if k in known})
+
+
 class ControllerClient:
     def __init__(self, base_url: str) -> None:
         self._base = base_url.rstrip("/")
@@ -60,7 +65,7 @@ class ControllerClient:
             json=payload,
         )
         resp.raise_for_status()
-        return RegisterResponse(**resp.json())
+        return parse_register_response(resp.json())
 
     async def heartbeat(self, node_id: str, token: str) -> HeartbeatResponse:
         resp = await self._client.post(
