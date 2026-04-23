@@ -25,6 +25,7 @@ from app.db.models import (
 from app.schemas.node import NodeRegisterRequest, NodeUpdateRequest
 from app.services import event_service
 from app.services import policy_service
+from app.services.policy_resolver import policy_applies_to_node, resolve_policy_for_node
 
 MAX_VPN_IP_ALLOCATION_RETRIES = 3
 
@@ -493,9 +494,9 @@ async def update_heartbeat(
         if previous_active != next_active:
             policies = await policy_service.list_policies(session)
             for policy in policies:
-                if not policy.enabled or not policy_service.policy_applies_to_node(policy, node):
+                if not policy.enabled or not policy_applies_to_node(policy, node):
                     continue
-                resolved = policy_service.resolve_policy_for_node(node, policy)
+                resolved = resolve_policy_for_node(node, policy)
                 if resolved["resolution"] == "fallback" and resolved["selected"] is not None:
                     await event_service.record_event(
                         session,

@@ -5,7 +5,7 @@ from sqlalchemy.orm import selectinload
 from app.core.config import controller_overlay_ip_for_kind, settings
 from app.db.models import DestinationPolicy, Node, NodeStatus, TransportLink, TransportStatus
 from app.schemas.node import OverlayConfigResponse, OverlayTransportConfig, PeerResponse
-from app.services.policy_service import policy_applies_to_node, resolve_policy_for_node
+from app.services.policy_resolver import policy_applies_to_node, resolve_policy_for_node
 from app.services.wireguard_service import get_public_key
 
 

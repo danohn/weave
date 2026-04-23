@@ -4,7 +4,7 @@ from typing import Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.db.models import EventKind, EventSeverity, NodeStatus, TransportKind, TransportStatus
-from app.services.policy_service import policy_applies_to_node, resolve_policy_for_node
+from app.services.policy_resolver import policy_applies_to_node, resolve_policy_for_node
 
 
 class TransportLinkHeartbeatReport(BaseModel):
