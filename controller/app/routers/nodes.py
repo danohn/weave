@@ -23,6 +23,23 @@ from app.services import frr_service, node_service, peer_service, wireguard_serv
 router = APIRouter(prefix="/api/v1/nodes", tags=["nodes"])
 
 
+def _transport_signature(node: Node) -> tuple[tuple[str | None, ...], ...]:
+    links = []
+    for link in getattr(node, "transport_links", []):
+        links.append(
+            (
+                link.kind.value if link.kind is not None else None,
+                link.name,
+                link.interface_name,
+                link.wireguard_public_key,
+                link.overlay_vpn_ip,
+                link.endpoint_ip,
+                str(link.endpoint_port) if link.endpoint_port is not None else None,
+            )
+        )
+    return tuple(sorted(links))
+
+
 async def _on_node_activated(node: Node) -> None:
     """Add the node to the controller's WireGuard, BFD, and BGP config."""
     links = sorted(
@@ -84,6 +101,8 @@ async def heartbeat(
         raise HTTPException(status_code=403, detail="Token does not match node")
     if current_node.status == NodeStatus.REVOKED:
         raise HTTPException(status_code=403, detail="Node is revoked")
+    prior_node = await node_service.get_node_by_id(session, current_node.id)
+    prior_signature = _transport_signature(prior_node) if prior_node is not None else ()
     was_offline = current_node.status == NodeStatus.OFFLINE
     node = await node_service.update_heartbeat(
         current_node,
@@ -93,9 +112,10 @@ async def heartbeat(
     )
     await broadcast_state(session)
     await broadcast_peers(session)
+    transport_changed = _transport_signature(node) != prior_signature
     # Update the WG peer endpoint when a node recovers from OFFLINE — its
     # reflected IP may have changed while it was unreachable.
-    if was_offline and node.status == NodeStatus.ACTIVE:
+    if node.status == NodeStatus.ACTIVE and (was_offline or transport_changed):
         await _on_node_activated(node)
     return HeartbeatResponse(status=node.status, last_seen=node.last_seen)
 
