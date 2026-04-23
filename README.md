@@ -194,16 +194,19 @@ curl -s -X POST https://<WEAVE_DOMAIN>/api/v1/auth/claims \
 Then on the new node (as root):
 
 ```bash
-REF=v0.2.1
+REF=v0.2.0
 curl -fsSL "https://raw.githubusercontent.com/danohn/weave/${REF}/agent/install.sh" \
   | bash -s -- \
       --controller-url https://<WEAVE_DOMAIN> \
       --node-name <name> \
-      --claim-token <token> \
-      --repo-ref "${REF}"
+      --claim-token <token>
 ```
 
-Pin both the script URL and `--repo-ref` to the same tag so everything installs from the same revision.
+That stable path installs `weave-agent` from PyPI. For development or testing against a Git ref, add:
+
+```bash
+--install-source github --repo-ref "${REF}"
+```
 
 Useful commands on an edge node:
 
