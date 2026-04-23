@@ -1,3 +1,7 @@
+# Node / Vite
+node_modules/
+.vite/
+
 # Python
 __pycache__/
 *.py[cod]
