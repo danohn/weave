@@ -35,9 +35,9 @@ class Peer:
     name: str
     wireguard_public_key: str
     vpn_ip: str
-    overlay_vpn_ip: str | None = None
     preferred_endpoint: str
     endpoint_port: int
+    overlay_vpn_ip: str | None = None
     site_subnet: str | None = None
     site_id: str | None = None
     site_name: str | None = None
