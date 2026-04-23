@@ -42,6 +42,7 @@ subnets = os.environ["TRANSPORT_OVERLAY_SUBNETS"].split(",")
 
 existing = subprocess.check_output(["ip", "-o", "-4", "addr", "show", "dev", wg_interface], text=True)
 existing_addrs = {line.split()[3].split("/")[0] for line in existing.splitlines()}
+primary_network = ipaddress.ip_interface(f"{controller_vpn_ip}/24").network
 
 for item in subnets:
     if "=" not in item:
@@ -58,6 +59,32 @@ for item in subnets:
             check=True,
         )
         print(f"[wg] Added overlay address {controller_ip}/32 to {wg_interface}")
+PY
+
+wg set "$WG_INTERFACE" \
+  private-key "$WG_KEY_FILE" \
+  listen-port "$CONTROLLER_ENDPOINT_PORT"
+ip link set "$WG_INTERFACE" up
+echo "[wg] Interface $WG_INTERFACE up — ${CONTROLLER_VPN_IP}/24 port ${CONTROLLER_ENDPOINT_PORT}"
+
+python3 - <<'PY'
+import ipaddress
+import os
+import subprocess
+
+wg_interface = os.environ["WG_INTERFACE"]
+controller_vpn_ip = os.environ["CONTROLLER_VPN_IP"]
+subnets = os.environ["TRANSPORT_OVERLAY_SUBNETS"].split(",")
+primary_network = ipaddress.ip_interface(f"{controller_vpn_ip}/24").network
+
+for item in subnets:
+    if "=" not in item:
+        continue
+    _, subnet = item.split("=", 1)
+    subnet = subnet.strip()
+    network = ipaddress.ip_network(subnet, strict=False)
+    if network == primary_network:
+        continue
     route_check = subprocess.run(
         ["ip", "route", "show", subnet, "dev", wg_interface],
         capture_output=True,
@@ -71,12 +98,6 @@ for item in subnets:
         )
         print(f"[wg] Added overlay route {subnet} dev {wg_interface}")
 PY
-
-wg set "$WG_INTERFACE" \
-  private-key "$WG_KEY_FILE" \
-  listen-port "$CONTROLLER_ENDPOINT_PORT"
-ip link set "$WG_INTERFACE" up
-echo "[wg] Interface $WG_INTERFACE up — ${CONTROLLER_VPN_IP}/24 port ${CONTROLLER_ENDPOINT_PORT}"
 
 # ── FRR ──────────────────────────────────────────────────────────────────────
 # Enable required daemons
