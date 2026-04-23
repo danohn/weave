@@ -20,6 +20,29 @@ function MetricCard({ label, value, tone = '', note }) {
   )
 }
 
+function EventFeed({ title, events, empty }) {
+  return (
+    <div className="event-panel">
+      <div className="event-panel-head">
+        <h3>{title}</h3>
+      </div>
+      {events.length === 0 ? (
+        <div className="detail-note">{empty}</div>
+      ) : (
+        <div className="event-timeline compact">
+          {events.map((event) => (
+            <div key={event.id || `${event.kind}-${event.occurred_at}-${event.title}`} className="event-row">
+              <div className="event-title">{event.title}</div>
+              <div className="event-message">{event.message}</div>
+              <div className="event-time">{relTime(event.occurred_at)}</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function SitesView() {
   const { fleet, lastUpdated, bgp } = useData()
   const confirm = useConfirm()
@@ -51,7 +74,7 @@ export default function SitesView() {
     { label: 'Healthy', value: fleet.healthySites || '—', tone: 'live', note: `${fleet.degradedSites} degraded` },
     { label: 'Established paths', value: fleet.establishedPeers || '—', tone: 'live', note: `${fleet.pendingPeers} converging` },
     { label: 'Transport alerts', value: (fleet.degradedTransports + fleet.downTransports) || '—', tone: fleet.degradedTransports + fleet.downTransports > 0 ? 'muted' : '', note: `${fleet.unmeasuredTransports} unmeasured` },
-    { label: 'Policy objects', value: fleet.sites.reduce((sum, site) => sum + site.policyCount, 0) || '—', note: 'Global + scoped intent' },
+    { label: 'Site exceptions', value: fleet.exceptionCount || '—', tone: fleet.exceptionCount > 0 ? 'muted' : '', note: 'Health and policy exceptions' },
   ]
 
   return (
@@ -72,6 +95,19 @@ export default function SitesView() {
         </div>
       </div>
 
+      <div className="overview-grid">
+        <EventFeed
+          title="Recent Events"
+          events={fleet.recentEvents.slice(0, 8)}
+          empty="No recent fleet events."
+        />
+        <EventFeed
+          title="Recent Failovers"
+          events={fleet.recentFailovers.slice(0, 6)}
+          empty="No recent transport failovers."
+        />
+      </div>
+
       <div className="table-shell">
         <table>
           <thead>
@@ -82,13 +118,14 @@ export default function SitesView() {
               <th>Reachability</th>
               <th>Active path</th>
               <th>Service routes</th>
+              <th>Exceptions</th>
               <th>Last seen</th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody>
             {sorted.length === 0 ? (
-              <tr><td colSpan={8}><div className="placeholder">No sites registered yet</div></td></tr>
+              <tr><td colSpan={9}><div className="placeholder">No sites registered yet</div></td></tr>
             ) : sorted.map((site) => {
               const node = site.node
               const primaryBgp = site.bgpSessions.find((session) => session.ip === (node.active_overlay_vpn_ip || node.vpn_ip))?.info
@@ -122,6 +159,16 @@ export default function SitesView() {
                         <span className="td-empty">No prefix</span>
                         <button className="edit-btn" onClick={() => setSubnetNode(node)}>Set</button>
                       </>
+                    )}
+                  </td>
+                  <td>
+                    {site.exceptions.length > 0 ? (
+                      <>
+                        <span className="exception-count">{site.exceptions.length} active</span>
+                        <div className="table-subtext">{site.exceptions[0]}</div>
+                      </>
+                    ) : (
+                      <span className="td-empty">None</span>
                     )}
                   </td>
                   <td>{relTime(node.last_seen)}</td>

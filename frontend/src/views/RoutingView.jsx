@@ -41,14 +41,16 @@ export default function RoutingView() {
               <th>Site</th>
               <th>Transport</th>
               <th>Peer IP</th>
+              <th>BFD</th>
               <th>State</th>
               <th>Uptime</th>
               <th>Prefixes received</th>
+              <th>Last reset</th>
             </tr>
           </thead>
           <tbody>
             {routingPeers.length === 0 ? (
-              <tr><td colSpan={6}><div className="placeholder">No routing peers discovered</div></td></tr>
+              <tr><td colSpan={8}><div className="placeholder">No routing peers discovered</div></td></tr>
             ) : routingPeers.map((peer) => (
               <tr key={peer.ip}>
                 <td className="td-name">
@@ -60,9 +62,11 @@ export default function RoutingView() {
                 </td>
                 <td>{peer.transport?.kind || 'identity'}</td>
                 <td className="td-mono">{peer.ip}</td>
+                <td>{peer.info?.bfd_status || '—'}</td>
                 <td><BgpBadge info={peer.info} compact /></td>
                 <td className="td-mono">{peer.info?.uptime || '—'}</td>
                 <td>{peer.info?.prefixes_received ?? 0}</td>
+                <td>{peer.info?.last_reset_due_to || '—'}</td>
               </tr>
             ))}
           </tbody>

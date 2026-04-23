@@ -10,6 +10,7 @@ export function DataProvider({ children }) {
   const [claims, setClaims] = useState([])
   const [bgp, setBgp] = useState({})
   const [policies, setPolicies] = useState([])
+  const [events, setEvents] = useState([])
   const [connected, setConnected] = useState(false)
   const [lastUpdated, setLastUpdated] = useState(null)
 
@@ -22,6 +23,7 @@ export function DataProvider({ children }) {
     if (data.claims !== undefined) setClaims(data.claims)
     if (data.bgp !== undefined) setBgp(data.bgp)
     if (data.policies !== undefined) setPolicies(data.policies)
+    if (data.events !== undefined) setEvents(data.events)
     setConnected(true)
     setLastUpdated(new Date())
   }, [])
@@ -64,7 +66,7 @@ export function DataProvider({ children }) {
     }
   }, [applyMessage])
 
-  const fleet = summarizeFleet(nodes, bgp, policies)
+  const fleet = summarizeFleet(nodes, bgp, policies, events)
   const transportInventory = fleet.transportLinks
     .map((transport) => ({
       ...transport,
@@ -100,6 +102,7 @@ export function DataProvider({ children }) {
       claims,
       bgp,
       policies,
+      events,
       connected,
       lastUpdated,
       fleet,

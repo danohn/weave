@@ -8,6 +8,7 @@ from app.core.websocket import broadcast_state
 from app.db.base import get_session
 from app.db.models import Node, NodeStatus
 from app.schemas.node import (
+    SiteEventResponse,
     build_node_admin_response,
     HeartbeatRequest,
     HeartbeatResponse,
@@ -18,9 +19,26 @@ from app.schemas.node import (
     NodeUpdateRequest,
     OverlayConfigResponse,
 )
-from app.services import frr_service, node_service, peer_service, wireguard_service
+from app.services import event_service, frr_service, node_service, peer_service, policy_service, wireguard_service
 
 router = APIRouter(prefix="/api/v1/nodes", tags=["nodes"])
+
+
+async def _build_admin_response(session: AsyncSession, node: Node) -> NodeAdminResponse:
+    bgp = await frr_service.get_bgp_status()
+    policies = await policy_service.list_policies(session)
+    event_map = await event_service.list_recent_events_by_node(session, node_ids=[node.id])
+    return build_node_admin_response(node, bgp=bgp, policies=policies, events=event_map.get(node.id, []))
+
+
+async def _build_admin_responses(session: AsyncSession, nodes: list[Node]) -> list[NodeAdminResponse]:
+    bgp = await frr_service.get_bgp_status()
+    policies = await policy_service.list_policies(session)
+    event_map = await event_service.list_recent_events_by_node(session, node_ids=[node.id for node in nodes])
+    return [
+        build_node_admin_response(node, bgp=bgp, policies=policies, events=event_map.get(node.id, []))
+        for node in nodes
+    ]
 
 
 def _transport_signature(node: Node) -> tuple[tuple[str | None, ...], ...]:
@@ -199,7 +217,7 @@ async def update_node(
         await _on_node_activated(node)
     await broadcast_peers(session)
     await broadcast_state(session)
-    return build_node_admin_response(node)
+    return await _build_admin_response(session, node)
 
 
 @router.patch("/{node_id}/activate", response_model=NodeAdminResponse)
@@ -212,7 +230,7 @@ async def activate(
     await broadcast_state(session)
     await broadcast_peers(session)
     await _on_node_activated(node)
-    return build_node_admin_response(node)
+    return await _build_admin_response(session, node)
 
 
 @router.delete("/{node_id}/revoke", response_model=NodeAdminResponse)
@@ -225,7 +243,7 @@ async def revoke(
     await broadcast_state(session)
     await broadcast_peers(session)
     await _on_node_removed(node)
-    return build_node_admin_response(node)
+    return await _build_admin_response(session, node)
 
 
 @router.delete("/{node_id}", status_code=204)
@@ -251,4 +269,4 @@ async def list_nodes(
     _: None = Depends(require_admin),
 ) -> list[NodeAdminResponse]:
     nodes = await node_service.list_all_nodes(session)
-    return [build_node_admin_response(n) for n in nodes]
+    return await _build_admin_responses(session, nodes)

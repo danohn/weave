@@ -47,11 +47,22 @@ async def get_bgp_status() -> dict[str, dict]:
         output = await _vtysh("show bgp summary json")
         data = json.loads(output)
         peers = data.get("ipv4Unicast", {}).get("peers", {})
+        neighbor_details: dict[str, dict] = {}
+        try:
+            neighbor_output = await _vtysh("show bgp neighbor json")
+            neighbor_details = json.loads(neighbor_output)
+        except Exception:
+            neighbor_details = {}
         return {
             ip: {
                 "state": peer.get("state", "Unknown"),
                 "uptime": peer.get("peerUptime", "never"),
                 "prefixes_received": peer.get("pfxRcd", 0),
+                "hostname": peer.get("hostname"),
+                "bfd_status": neighbor_details.get(ip, {}).get("peerBfdInfo", {}).get("status"),
+                "last_reset_due_to": neighbor_details.get(ip, {}).get("lastResetDueTo"),
+                "host_local": neighbor_details.get(ip, {}).get("hostLocal"),
+                "host_foreign": neighbor_details.get(ip, {}).get("hostForeign"),
             }
             for ip, peer in peers.items()
         }

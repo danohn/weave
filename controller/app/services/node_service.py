@@ -12,6 +12,8 @@ from app.core.security import issue_hashed_token, verify_token
 from app.db.models import (
     DeviceClaim,
     DeviceClaimStatus,
+    EventKind,
+    EventSeverity,
     Node,
     NodeStatus,
     Site,
@@ -21,6 +23,8 @@ from app.db.models import (
     TransportStatus,
 )
 from app.schemas.node import NodeRegisterRequest, NodeUpdateRequest
+from app.services import event_service
+from app.services import policy_service
 
 MAX_VPN_IP_ALLOCATION_RETRIES = 3
 
@@ -405,6 +409,15 @@ async def register_node(
                 DeviceClaimStatus.ACTIVE if initial_status == NodeStatus.ACTIVE else DeviceClaimStatus.CLAIMED
             )
 
+        await event_service.record_event(
+            session,
+            kind=EventKind.NODE_REGISTERED,
+            severity=EventSeverity.INFO,
+            title="Node registered",
+            message=f"{node.name} registered and {'activated' if initial_status == NodeStatus.ACTIVE else 'awaits activation'}",
+            node=node,
+        )
+
         await session.commit()
         return await get_node_by_id(session, node.id), auth_token
 
@@ -419,6 +432,13 @@ async def update_heartbeat(
     transport_links: list[dict] | None = None,
 ) -> Node:
     now = datetime.now(timezone.utc)
+    prior_transport_state = {
+        link.kind: {
+            "status": link.status,
+            "is_active": link.is_active,
+        }
+        for link in getattr(node, "transport_links", [])
+    }
     node.last_seen = now
     if request.client:
         node.reflected_endpoint_ip = request.client.host
@@ -434,10 +454,69 @@ async def update_heartbeat(
         result = await session.execute(
             select(TransportLink).where(TransportLink.node_id == node.id)
         )
-        select_active_transport_links(list(result.scalars().all()))
+        links = list(result.scalars().all())
+        selected = select_active_transport_links(links)
+        for link in links:
+            previous = prior_transport_state.get(link.kind)
+            if previous and previous["status"] != link.status:
+                await event_service.record_event(
+                    session,
+                    kind=EventKind.TRANSPORT_STATUS_CHANGED,
+                    severity=EventSeverity.WARN if link.status in {TransportStatus.DOWN, TransportStatus.DEGRADED} else EventSeverity.INFO,
+                    title="Transport state changed",
+                    message=f"{node.name} {link.kind.value} changed from {previous['status'].value.lower()} to {link.status.value.lower()}",
+                    node=node,
+                    transport_link=link,
+                )
+            elif previous is None:
+                await event_service.record_event(
+                    session,
+                    kind=EventKind.TRANSPORT_STATUS_CHANGED,
+                    severity=EventSeverity.INFO,
+                    title="Transport discovered",
+                    message=f"{node.name} reported {link.kind.value} transport {link.name}",
+                    node=node,
+                    transport_link=link,
+                )
+        previous_active = next((kind for kind, state in prior_transport_state.items() if state["is_active"]), None)
+        next_active = selected[0].kind if selected else None
+        if previous_active != next_active and next_active is not None:
+            await event_service.record_event(
+                session,
+                kind=EventKind.TRANSPORT_FAILOVER,
+                severity=EventSeverity.WARN if previous_active is not None else EventSeverity.INFO,
+                title="Active transport changed",
+                message=f"{node.name} active path moved from {previous_active.value if previous_active is not None else 'none'} to {next_active.value}",
+                node=node,
+                transport_link=selected[0],
+            )
+        if previous_active != next_active:
+            policies = await policy_service.list_policies(session)
+            for policy in policies:
+                if not policy.enabled or not policy_service.policy_applies_to_node(policy, node):
+                    continue
+                resolved = policy_service.resolve_policy_for_node(node, policy)
+                if resolved["resolution"] == "fallback" and resolved["selected"] is not None:
+                    await event_service.record_event(
+                        session,
+                        kind=EventKind.POLICY_FALLBACK_ACTIVE,
+                        severity=EventSeverity.WARN,
+                        title="Policy running on fallback",
+                        message=f"{policy.name} is using fallback transport {resolved['selected'].kind.value} on {node.name}",
+                        node=node,
+                        transport_link=resolved["selected"],
+                    )
     # Auto-recover: an OFFLINE node that heartbeats is back online
     if node.status == NodeStatus.OFFLINE:
         node.status = NodeStatus.ACTIVE
+        await event_service.record_event(
+            session,
+            kind=EventKind.NODE_ACTIVATED,
+            severity=EventSeverity.INFO,
+            title="Node recovered",
+            message=f"{node.name} resumed heartbeats and is active again",
+            node=node,
+        )
     await sync_node_compat_fields(session, node)
     await session.commit()
     return await get_node_by_id(session, node.id)
@@ -479,6 +558,14 @@ async def expire_stale_nodes(session: AsyncSession, threshold_seconds: int) -> l
     stale = list(result.scalars().all())
     for node in stale:
         node.status = NodeStatus.OFFLINE
+        await event_service.record_event(
+            session,
+            kind=EventKind.NODE_OFFLINE,
+            severity=EventSeverity.WARN,
+            title="Node offline",
+            message=f"{node.name} stopped sending heartbeats",
+            node=node,
+        )
     if stale:
         await session.commit()
     return stale
@@ -487,6 +574,14 @@ async def expire_stale_nodes(session: AsyncSession, threshold_seconds: int) -> l
 async def mark_node_offline(node: Node, session: AsyncSession) -> Node:
     """Immediately mark a node OFFLINE (called on clean agent shutdown)."""
     node.status = NodeStatus.OFFLINE
+    await event_service.record_event(
+        session,
+        kind=EventKind.NODE_OFFLINE,
+        severity=EventSeverity.INFO,
+        title="Node shutdown",
+        message=f"{node.name} reported a clean shutdown",
+        node=node,
+    )
     await session.commit()
     await session.refresh(node)
     return node
@@ -508,6 +603,14 @@ async def activate_node(node_id: str, session: AsyncSession) -> Node:
         claim = claim_result.scalar_one_or_none()
         if claim and claim.status != DeviceClaimStatus.REVOKED:
             claim.status = DeviceClaimStatus.ACTIVE
+    await event_service.record_event(
+        session,
+        kind=EventKind.NODE_ACTIVATED,
+        severity=EventSeverity.INFO,
+        title="Node activated",
+        message=f"{node.name} was activated for service",
+        node=node,
+    )
     await session.commit()
     return await get_node_by_id(session, node_id)
 
@@ -524,6 +627,14 @@ async def revoke_node(node_id: str, session: AsyncSession) -> Node:
         claim = claim_result.scalar_one_or_none()
         if claim:
             claim.status = DeviceClaimStatus.REVOKED
+    await event_service.record_event(
+        session,
+        kind=EventKind.NODE_REVOKED,
+        severity=EventSeverity.CRITICAL,
+        title="Node revoked",
+        message=f"{node.name} was revoked and removed from the mesh",
+        node=node,
+    )
     await session.commit()
     return await get_node_by_id(session, node_id)
 

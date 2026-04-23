@@ -112,6 +112,9 @@ export function summarizeSite(node, bgp = {}, policies = []) {
     activeTransport,
     policyCount: policies.filter((policy) => !policy.node_id || policy.node_id === node.id || (!policy.node_id && policy.site_id && policy.site_id === node.site_id) || (!policy.node_id && !policy.site_id)).length,
     health,
+    exceptions: node.exceptions || [],
+    recentEvents: node.recent_events || [],
+    policySummary: node.policy_summary || { total: 0, preferred_active: 0, fallback_active: 0, unresolved: 0 },
   }
 }
 
@@ -132,7 +135,7 @@ export function describeSiteHealth(summary) {
   return parts.join(' · ')
 }
 
-export function summarizeFleet(nodes, bgp, policies) {
+export function summarizeFleet(nodes, bgp, policies, events = []) {
   const sites = nodes.map((node) => summarizeSite(node, bgp, policies))
   const activeSites = sites.filter((site) => site.node.status === 'ACTIVE').length
   const healthySites = sites.filter((site) => site.health === 'Healthy').length
@@ -146,6 +149,8 @@ export function summarizeFleet(nodes, bgp, policies) {
   const bgpPeers = Object.entries(bgp)
   const establishedPeers = bgpPeers.filter(([, info]) => info?.state === 'Established').length
   const pendingPeers = bgpPeers.filter(([, info]) => ['Connect', 'Active'].includes(info?.state)).length
+  const exceptionCount = sites.reduce((sum, site) => sum + site.exceptions.length, 0)
+  const failoverEvents = events.filter((event) => event.kind === 'TRANSPORT_FAILOVER' || event.kind === 'POLICY_FALLBACK_ACTIVE')
 
   return {
     sites,
@@ -160,5 +165,8 @@ export function summarizeFleet(nodes, bgp, policies) {
     unmeasuredTransports,
     establishedPeers,
     pendingPeers,
+    exceptionCount,
+    recentEvents: events,
+    recentFailovers: failoverEvents,
   }
 }

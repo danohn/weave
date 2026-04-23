@@ -4,6 +4,13 @@ import { relTime, normalizeTransportStatus } from '../lib/utils'
 import { BgpBadge, TransportBadge } from '../components/StatusPill'
 import SiteDetailDrawer from '../components/SiteDetailDrawer'
 
+function BfdCell({ status }) {
+  const normalized = String(status || 'UNKNOWN').toUpperCase()
+  if (normalized === 'UP') return <span className="td-good">Up</span>
+  if (normalized === 'DOWN') return <span className="td-bad">Down</span>
+  return <span className="td-empty">Unmeasured</span>
+}
+
 export default function TransportsView() {
   const { transportInventory, bgp } = useData()
   const [selectedNode, setSelectedNode] = useState(null)
@@ -27,6 +34,7 @@ export default function TransportsView() {
               <th>Overlay</th>
               <th>Underlay</th>
               <th>Interface</th>
+              <th>BFD</th>
               <th>BGP</th>
               <th>Latency</th>
               <th>Loss</th>
@@ -34,7 +42,7 @@ export default function TransportsView() {
           </thead>
           <tbody>
             {transportInventory.length === 0 ? (
-              <tr><td colSpan={9}><div className="placeholder">No transport links available</div></td></tr>
+              <tr><td colSpan={10}><div className="placeholder">No transport links available</div></td></tr>
             ) : transportInventory.map((transport) => (
               <tr key={transport.id || `${transport.node?.id}-${transport.kind}`}>
                 <td className="td-name">
@@ -50,6 +58,7 @@ export default function TransportsView() {
                 <td className="td-mono">{transport.overlay_vpn_ip || '—'}</td>
                 <td className="td-mono">{transport.endpoint_ip}:{transport.endpoint_port}</td>
                 <td className="td-mono">{transport.interface_name || '—'}</td>
+                <td><BfdCell status={transport.bfd_status || transport.bgp?.bfd_status} /></td>
                 <td><BgpBadge info={transport.bgp} compact /></td>
                 <td>{transport.rtt_ms != null ? `${transport.rtt_ms}ms` : 'Unmeasured'}</td>
                 <td>{transport.loss_pct != null ? `${transport.loss_pct}%` : 'Unmeasured'}</td>

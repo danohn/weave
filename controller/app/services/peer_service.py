@@ -5,6 +5,7 @@ from sqlalchemy.orm import selectinload
 from app.core.config import controller_overlay_ip_for_kind, settings
 from app.db.models import DestinationPolicy, Node, NodeStatus, TransportLink, TransportStatus
 from app.schemas.node import OverlayConfigResponse, OverlayTransportConfig, PeerResponse
+from app.services.policy_service import policy_applies_to_node, resolve_policy_for_node
 from app.services.wireguard_service import get_public_key
 
 
@@ -154,11 +155,7 @@ async def get_overlay_config(node: Node, session: AsyncSession) -> OverlayConfig
         .where(DestinationPolicy.enabled.is_(True))
         .order_by(DestinationPolicy.priority.asc(), DestinationPolicy.created_at.asc())
     )
-    policies = [
-        item
-        for item in policy_result.scalars().all()
-        if _policy_applies_to_node(item, node)
-    ]
+    policies = [item for item in policy_result.scalars().all() if policy_applies_to_node(item, node)]
 
     return OverlayConfigResponse(
         transports=[
@@ -184,19 +181,8 @@ async def get_overlay_config(node: Node, session: AsyncSession) -> OverlayConfig
 
 
 def _resolve_destination_policy(node: Node, policy: DestinationPolicy):
-    links_by_kind = {
-        link.kind: link
-        for link in getattr(node, "transport_links", [])
-        if link.admin_state_up and link.interface_name and link.overlay_vpn_ip
-    }
-    selected = None
-    preferred = links_by_kind.get(policy.preferred_transport)
-    if preferred is not None and preferred.status != TransportStatus.DOWN:
-        selected = preferred
-    elif policy.fallback_transport is not None:
-        fallback = links_by_kind.get(policy.fallback_transport)
-        if fallback is not None and fallback.status != TransportStatus.DOWN:
-            selected = fallback
+    resolved = resolve_policy_for_node(node, policy)
+    selected = resolved["selected"]
 
     from app.schemas.node import DestinationPolicyResponse
 
@@ -216,11 +202,3 @@ def _resolve_destination_policy(node: Node, policy: DestinationPolicy):
         priority=policy.priority,
         enabled=policy.enabled,
     )
-
-
-def _policy_applies_to_node(policy: DestinationPolicy, node: Node) -> bool:
-    if policy.node_id is not None:
-        return policy.node_id == node.id
-    if policy.site_id is not None:
-        return policy.site_id == node.site_id
-    return True

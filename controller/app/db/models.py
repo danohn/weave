@@ -36,6 +36,24 @@ class TransportStatus(str, enum.Enum):
     DOWN = "DOWN"
 
 
+class EventSeverity(str, enum.Enum):
+    INFO = "INFO"
+    WARN = "WARN"
+    CRITICAL = "CRITICAL"
+
+
+class EventKind(str, enum.Enum):
+    NODE_REGISTERED = "NODE_REGISTERED"
+    NODE_ACTIVATED = "NODE_ACTIVATED"
+    NODE_OFFLINE = "NODE_OFFLINE"
+    NODE_REVOKED = "NODE_REVOKED"
+    TRANSPORT_STATUS_CHANGED = "TRANSPORT_STATUS_CHANGED"
+    TRANSPORT_FAILOVER = "TRANSPORT_FAILOVER"
+    BGP_SESSION_ESTABLISHED = "BGP_SESSION_ESTABLISHED"
+    BGP_SESSION_LOST = "BGP_SESSION_LOST"
+    POLICY_FALLBACK_ACTIVE = "POLICY_FALLBACK_ACTIVE"
+
+
 class Site(Base):
     __tablename__ = "sites"
 
@@ -220,3 +238,32 @@ class TransportLink(Base):
     )
 
     node: Mapped[Node] = relationship(back_populates="transport_links", lazy="selectin")
+
+
+class SiteEvent(Base):
+    __tablename__ = "site_events"
+
+    id: Mapped[str] = mapped_column(
+        String, primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    kind: Mapped[EventKind] = mapped_column(Enum(EventKind), nullable=False, index=True)
+    severity: Mapped[EventSeverity] = mapped_column(
+        Enum(EventSeverity), nullable=False, default=EventSeverity.INFO
+    )
+    node_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("nodes.id"), nullable=True, index=True
+    )
+    site_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("sites.id"), nullable=True, index=True
+    )
+    transport_link_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("transport_links.id"), nullable=True, index=True
+    )
+    transport_kind: Mapped[TransportKind | None] = mapped_column(
+        Enum(TransportKind), nullable=True
+    )
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    message: Mapped[str] = mapped_column(String, nullable=False)
+    occurred_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), index=True
+    )

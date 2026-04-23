@@ -669,6 +669,30 @@ thead th {
   margin-bottom: 22px;
 }
 
+.detail-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.detail-tab {
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--gray-200);
+  background: rgba(255,255,255,0.8);
+  color: var(--gray-600);
+  cursor: pointer;
+  font: inherit;
+}
+
+.detail-tab.active {
+  background: var(--black);
+  border-color: var(--black);
+  color: var(--white);
+}
+
 .detail-metric {
   border: 1px solid var(--gray-200);
   background: rgba(255,255,255,0.8);
@@ -756,6 +780,13 @@ thead th {
   border-bottom: 1px solid var(--gray-100);
 }
 
+.transport-card-badges {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .transport-card-meta {
   margin-top: 6px;
   font-size: 12px;
@@ -764,6 +795,137 @@ thead th {
 
 .detail-table {
   box-shadow: none;
+}
+
+.detail-note {
+  border: 1px dashed var(--gray-200);
+  border-radius: 12px;
+  padding: 14px;
+  color: var(--gray-500);
+  background: rgba(255,255,255,0.72);
+}
+
+.detail-note.ok {
+  border-color: rgba(34, 197, 94, 0.22);
+  color: var(--green-text);
+}
+
+.detail-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0;
+  list-style: none;
+}
+
+.detail-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  background: var(--gray-100);
+  color: var(--gray-700);
+}
+
+.detail-chip.warn {
+  background: var(--amber-bg);
+  color: var(--amber-text);
+}
+
+.overview-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.event-panel {
+  border: 1px solid var(--gray-200);
+  border-radius: 14px;
+  background: rgba(255,255,255,0.84);
+  padding: 16px;
+}
+
+.event-panel-head {
+  margin-bottom: 12px;
+}
+
+.event-panel-head h3 {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--gray-500);
+}
+
+.event-timeline {
+  display: grid;
+  gap: 10px;
+}
+
+.event-timeline.compact .event-row {
+  padding: 10px 0;
+}
+
+.event-row {
+  border-bottom: 1px solid var(--gray-100);
+  padding: 12px 0;
+}
+
+.event-row:first-child {
+  padding-top: 0;
+}
+
+.event-row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.event-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.event-time {
+  color: var(--gray-400);
+  font-size: 12px;
+}
+
+.event-title {
+  font-weight: 600;
+  color: var(--black);
+  margin-bottom: 4px;
+}
+
+.event-message {
+  color: var(--gray-500);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.exception-count {
+  color: var(--amber-text);
+  font-weight: 600;
+}
+
+.td-good {
+  color: var(--green-text);
+  font-weight: 600;
+}
+
+.td-bad {
+  color: var(--red-text);
+  font-weight: 600;
+}
+
+@media (max-width: 1080px) {
+  .overview-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* ── Token cell ───────────────────────────────────────────── */
