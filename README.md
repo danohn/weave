@@ -149,6 +149,22 @@ Run lint and formatting checks:
 ./.venv/bin/pre-commit run --all-files
 ```
 
+## Agent package releases
+
+The edge agent is published to PyPI as `weave-agent`, while the installed CLI remains `weave`.
+
+Install the latest published agent:
+
+```bash
+uv tool install weave-agent
+```
+
+Upgrade an installed agent:
+
+```bash
+uv tool upgrade weave-agent
+```
+
 ## Installing an edge node
 
 Generate a bootstrap claim from the controller:
