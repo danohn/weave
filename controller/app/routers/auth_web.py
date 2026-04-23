@@ -1,10 +1,12 @@
 import base64
 import hashlib
-import json
 import secrets
+from typing import Any
 from urllib.parse import urlencode
 
 import httpx
+from authlib.jose import JsonWebKey, jwt
+from authlib.jose.errors import JoseError
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 
@@ -13,6 +15,7 @@ from app.core.config import settings
 router = APIRouter(prefix="/auth", tags=["auth-web"])
 
 _discovery_cache: dict | None = None
+_jwks_cache: dict[str, Any] | None = None
 
 
 async def _discover() -> dict:
@@ -26,6 +29,17 @@ async def _discover() -> dict:
             r.raise_for_status()
             _discovery_cache = r.json()
     return _discovery_cache
+
+
+async def _fetch_jwks() -> dict[str, Any]:
+    global _jwks_cache
+    if _jwks_cache is None:
+        doc = await _discover()
+        async with httpx.AsyncClient() as client:
+            r = await client.get(doc["jwks_uri"], timeout=10)
+            r.raise_for_status()
+            _jwks_cache = r.json()
+    return _jwks_cache
 
 
 def _pkce_pair() -> tuple[str, str]:
@@ -42,10 +56,46 @@ def _redirect_uri() -> str:
 
 
 def _decode_id_token_claims(id_token: str) -> dict:
-    payload = id_token.split(".")[1]
-    padding = (-len(payload)) % 4
-    payload += "=" * padding
-    return json.loads(base64.urlsafe_b64decode(payload))
+    jwks = JsonWebKey.import_key_set(_jwks_cache or {"keys": []})
+    claims = jwt.decode(
+        id_token,
+        jwks,
+        claims_options={
+            "iss": {"essential": True, "value": settings.OIDC_ISSUER},
+            "aud": {"essential": True, "value": settings.OIDC_CLIENT_ID},
+            "exp": {"essential": True},
+            "sub": {"essential": True},
+        },
+    )
+    claims.validate(leeway=60)
+    return dict(claims)
+
+
+async def _exchange_code_for_tokens(code: str, verifier: str) -> dict[str, Any]:
+    doc = await _discover()
+    async with httpx.AsyncClient() as client:
+        r = await client.post(
+            doc["token_endpoint"],
+            data={
+                "grant_type": "authorization_code",
+                "code": code,
+                "redirect_uri": _redirect_uri(),
+                "client_id": settings.OIDC_CLIENT_ID,
+                "client_secret": settings.OIDC_CLIENT_SECRET,
+                "code_verifier": verifier,
+            },
+            timeout=10,
+        )
+        r.raise_for_status()
+        return r.json()
+
+
+async def _validate_id_token(id_token: str) -> dict[str, Any]:
+    await _fetch_jwks()
+    try:
+        return _decode_id_token_claims(id_token)
+    except JoseError as exc:
+        raise ValueError("Invalid ID token") from exc
 
 
 @router.get("/login")
@@ -89,25 +139,11 @@ async def oidc_callback(
     if not verifier:
         return JSONResponse({"detail": "Missing PKCE verifier"}, status_code=400)
 
-    doc = await _discover()
-
-    async with httpx.AsyncClient() as client:
-        r = await client.post(
-            doc["token_endpoint"],
-            data={
-                "grant_type": "authorization_code",
-                "code": code,
-                "redirect_uri": _redirect_uri(),
-                "client_id": settings.OIDC_CLIENT_ID,
-                "client_secret": settings.OIDC_CLIENT_SECRET,
-                "code_verifier": verifier,
-            },
-            timeout=10,
-        )
-        r.raise_for_status()
-        tokens = r.json()
-
-    claims = _decode_id_token_claims(tokens["id_token"])
+    tokens = await _exchange_code_for_tokens(code, verifier)
+    try:
+        claims = await _validate_id_token(tokens["id_token"])
+    except ValueError:
+        return JSONResponse({"detail": "Invalid ID token"}, status_code=401)
 
     if settings.OIDC_ADMIN_GROUP:
         groups = claims.get("groups", [])

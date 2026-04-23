@@ -62,6 +62,24 @@ async def client() -> AsyncClient:
 
 
 @pytest_asyncio.fixture
+async def secure_client() -> AsyncClient:
+    """HTTPS test client so Secure session cookies are sent back to the app."""
+
+    async def override_get_session():
+        async with TestSessionLocal() as session:
+            yield session
+
+    app.dependency_overrides[get_session] = override_get_session
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="https://test"
+    ) as ac:
+        yield ac
+
+    app.dependency_overrides.clear()
+
+
+@pytest_asyncio.fixture
 async def client_require_preauth() -> AsyncClient:
     """HTTP test client with REQUIRE_PREAUTH forced on."""
 
