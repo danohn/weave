@@ -37,6 +37,8 @@ def _index_names(table_name: str) -> set[str]:
 
 def upgrade() -> None:
     tables = _table_names()
+    bind = op.get_bind()
+    is_sqlite = bind.dialect.name == "sqlite"
 
     if "sites" not in tables:
         op.create_table(
@@ -92,17 +94,25 @@ def upgrade() -> None:
     if "ix_transport_links_node_id" not in _index_names("transport_links"):
         op.create_index("ix_transport_links_node_id", "transport_links", ["node_id"], unique=False)
 
-    node_columns = _column_names("nodes")
-    node_indexes = _index_names("nodes")
-    with op.batch_alter_table("nodes") as batch_op:
+    if is_sqlite:
+        if "_alembic_tmp_nodes" in _table_names():
+            op.execute("DROP TABLE _alembic_tmp_nodes")
+        node_columns = _column_names("nodes")
         if "site_id" not in node_columns:
-            batch_op.add_column(sa.Column("site_id", sa.String(), nullable=True))
-        if "ix_nodes_site_id" not in node_indexes:
-            batch_op.create_index("ix_nodes_site_id", ["site_id"], unique=False)
-        if "site_id" not in node_columns:
-            batch_op.create_foreign_key("fk_nodes_site_id", "sites", ["site_id"], ["id"])
+            op.add_column("nodes", sa.Column("site_id", sa.String(), nullable=True))
+        if "ix_nodes_site_id" not in _index_names("nodes"):
+            op.create_index("ix_nodes_site_id", "nodes", ["site_id"], unique=False)
+    else:
+        node_columns = _column_names("nodes")
+        node_indexes = _index_names("nodes")
+        with op.batch_alter_table("nodes") as batch_op:
+            if "site_id" not in node_columns:
+                batch_op.add_column(sa.Column("site_id", sa.String(), nullable=True))
+            if "ix_nodes_site_id" not in node_indexes:
+                batch_op.create_index("ix_nodes_site_id", ["site_id"], unique=False)
+            if "site_id" not in node_columns:
+                batch_op.create_foreign_key("fk_nodes_site_id", "sites", ["site_id"], ["id"])
 
-    bind = op.get_bind()
     metadata = sa.MetaData()
     sites = sa.Table("sites", metadata, autoload_with=bind)
     site_prefixes = sa.Table("site_prefixes", metadata, autoload_with=bind)
@@ -174,10 +184,22 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    with op.batch_alter_table("nodes") as batch_op:
-        batch_op.drop_constraint("fk_nodes_site_id", type_="foreignkey")
-        batch_op.drop_index("ix_nodes_site_id")
-        batch_op.drop_column("site_id")
+    bind = op.get_bind()
+    is_sqlite = bind.dialect.name == "sqlite"
+
+    if is_sqlite:
+        if "_alembic_tmp_nodes" in _table_names():
+            op.execute("DROP TABLE _alembic_tmp_nodes")
+        if "ix_nodes_site_id" in _index_names("nodes"):
+            op.drop_index("ix_nodes_site_id", table_name="nodes")
+        if "site_id" in _column_names("nodes"):
+            with op.batch_alter_table("nodes") as batch_op:
+                batch_op.drop_column("site_id")
+    else:
+        with op.batch_alter_table("nodes") as batch_op:
+            batch_op.drop_constraint("fk_nodes_site_id", type_="foreignkey")
+            batch_op.drop_index("ix_nodes_site_id")
+            batch_op.drop_column("site_id")
 
     op.drop_index("ix_transport_links_node_id", table_name="transport_links")
     op.drop_table("transport_links")
