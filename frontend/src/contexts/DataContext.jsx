@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react'
+import { summarizeFleet, sortTransports } from '../lib/utils'
 
 const DataContext = createContext(null)
 
@@ -63,8 +64,48 @@ export function DataProvider({ children }) {
     }
   }, [applyMessage])
 
+  const fleet = summarizeFleet(nodes, bgp, policies)
+  const transportInventory = fleet.transportLinks
+    .map((transport) => ({
+      ...transport,
+      bgp: transport.overlay_vpn_ip ? bgp[transport.overlay_vpn_ip] : null,
+    }))
+    .sort((a, b) => {
+      const siteCompare = String(a.node?.name || '').localeCompare(String(b.node?.name || ''))
+      if (siteCompare !== 0) return siteCompare
+      const transportCompare = (a.priority ?? 999) - (b.priority ?? 999)
+      if (transportCompare !== 0) return transportCompare
+      return String(a.kind || '').localeCompare(String(b.kind || ''))
+    })
+
+  const routingPeers = Object.entries(bgp)
+    .map(([ip, info]) => {
+      for (const node of nodes) {
+        for (const link of sortTransports(node.transport_links || [])) {
+          if (link.overlay_vpn_ip === ip) {
+            return { ip, info, node, transport: link }
+          }
+        }
+        if (node.vpn_ip === ip) {
+          return { ip, info, node, transport: null }
+        }
+      }
+      return { ip, info, node: null, transport: null }
+    })
+    .sort((a, b) => String(a.node?.name || a.ip).localeCompare(String(b.node?.name || b.ip)))
+
   return (
-    <DataContext.Provider value={{ nodes, claims, bgp, policies, connected, lastUpdated }}>
+    <DataContext.Provider value={{
+      nodes,
+      claims,
+      bgp,
+      policies,
+      connected,
+      lastUpdated,
+      fleet,
+      transportInventory,
+      routingPeers,
+    }}>
       {children}
     </DataContext.Provider>
   )

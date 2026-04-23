@@ -2,9 +2,10 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from './contexts/AuthContext'
 import { DataProvider } from './contexts/DataContext'
 import LoginView from './views/LoginView'
-import NodesView from './views/NodesView'
+import SitesView from './views/SitesView'
 import ClaimsView from './views/ClaimsView'
-import BgpView from './views/BgpView'
+import RoutingView from './views/RoutingView'
+import TransportsView from './views/TransportsView'
 import PoliciesView from './views/PoliciesView'
 import Sidebar from './components/Sidebar'
 import Header from './components/Header'
@@ -24,10 +25,13 @@ function AppShell() {
         <Sidebar />
         <main className="content">
           <Routes>
-            <Route path="/" element={<Navigate to="/nodes" replace />} />
-            <Route path="/nodes"  element={<NodesView />} />
+            <Route path="/" element={<Navigate to="/sites" replace />} />
+            <Route path="/nodes" element={<Navigate to="/sites" replace />} />
+            <Route path="/bgp" element={<Navigate to="/routing" replace />} />
+            <Route path="/sites" element={<SitesView />} />
             <Route path="/claims" element={<ClaimsView />} />
-            <Route path="/bgp"    element={<BgpView />} />
+            <Route path="/transports" element={<TransportsView />} />
+            <Route path="/routing" element={<RoutingView />} />
             <Route path="/policies" element={<PoliciesView />} />
           </Routes>
         </main>
