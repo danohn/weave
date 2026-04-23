@@ -105,7 +105,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Weave",
     description="WireGuard-based SD-WAN control plane.",
-    version="0.2.1",
+    version="0.2.2",
     lifespan=lifespan,
 )
 

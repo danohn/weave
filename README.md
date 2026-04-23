@@ -110,7 +110,7 @@ docker compose -f docker-compose.with-traefik.yml -f docker-compose.dev.yml up -
 | Variable | Required | Description |
 |---|---|---|
 | `WEAVE_DOMAIN` | Yes | Domain Traefik routes to the dashboard and API |
-| `WEAVE_VERSION` | No | GHCR image tag to deploy (default: current release tag, e.g. `v0.2.1`) |
+| `WEAVE_VERSION` | No | GHCR image tag to deploy (default: current release tag, e.g. `v0.2.2`) |
 | `SESSION_SECRET` | Yes | Secret key for signing sessions |
 | `SESSION_COOKIE_SECURE` | No | Force Secure session cookies on/off (auto-enables when `WEAVE_DOMAIN` is set) |
 | `OIDC_ISSUER` | Yes | OIDC provider issuer URL |
@@ -194,7 +194,7 @@ curl -s -X POST https://<WEAVE_DOMAIN>/api/v1/auth/claims \
 Then on the new node (as root):
 
 ```bash
-REF=v0.2.0
+REF=v0.2.2
 curl -fsSL "https://raw.githubusercontent.com/danohn/weave/${REF}/agent/install.sh" \
   | bash -s -- \
       --controller-url https://<WEAVE_DOMAIN> \
