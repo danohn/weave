@@ -4,11 +4,14 @@ from datetime import datetime, timedelta, timezone
 from fastapi import HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import IntegrityError
 
 from app.core.config import settings
 from app.core.security import issue_hashed_token, verify_token
 from app.db.models import DeviceClaim, DeviceClaimStatus, Node, NodeStatus
 from app.schemas.node import NodeRegisterRequest, NodeUpdateRequest
+
+MAX_VPN_IP_ALLOCATION_RETRIES = 3
 
 
 async def _allocate_vpn_ip(session: AsyncSession) -> str:
@@ -24,6 +27,11 @@ async def _allocate_vpn_ip(session: AsyncSession) -> str:
         status_code=503,
         detail=f"VPN address space exhausted ({settings.VPN_SUBNET})",
     )
+
+
+def _is_vpn_ip_unique_violation(exc: IntegrityError) -> bool:
+    message = str(exc.orig).lower() if exc.orig is not None else str(exc).lower()
+    return "vpn_ip" in message and ("unique" in message or "duplicate" in message)
 
 
 async def register_node(
@@ -72,40 +80,55 @@ async def register_node(
     elif settings.REQUIRE_PREAUTH:
         raise HTTPException(status_code=401, detail="A claim token is required to register")
 
-    vpn_ip = await _allocate_vpn_ip(session)
     reflected_ip = request.client.host if request.client else None
-    now = datetime.now(timezone.utc)
+    claim_id = claim_row.id if claim_row else None
+    claim_site_subnet = claim_row.site_subnet if claim_row and claim_row.site_subnet else None
     initial_status = NodeStatus.ACTIVE if claim_row else NodeStatus.PENDING
-    auth_token, auth_token_prefix, auth_token_hash = issue_hashed_token()
-    node = Node(
-        name=data.name,
-        wireguard_public_key=data.wireguard_public_key,
-        endpoint_ip=data.endpoint_ip or reflected_ip,
-        endpoint_port=data.endpoint_port,
-        vpn_ip=vpn_ip,
-        site_subnet=claim_row.site_subnet if claim_row and claim_row.site_subnet else data.site_subnet,
-        reflected_endpoint_ip=reflected_ip,
-        auth_token_hash=auth_token_hash,
-        auth_token_prefix=auth_token_prefix,
-        auth_token_issued_at=now,
-        device_claim_id=claim_row.id if claim_row else None,
-        status=initial_status,
-        last_seen=now,
-        created_at=now,
-    )
-    session.add(node)
-    await session.flush()
 
-    if claim_row:
-        claim_row.claimed_at = now
-        claim_row.claimed_by_node_id = node.id
-        claim_row.status = (
-            DeviceClaimStatus.ACTIVE if initial_status == NodeStatus.ACTIVE else DeviceClaimStatus.CLAIMED
+    for attempt in range(1, MAX_VPN_IP_ALLOCATION_RETRIES + 1):
+        vpn_ip = await _allocate_vpn_ip(session)
+        now = datetime.now(timezone.utc)
+        auth_token, auth_token_prefix, auth_token_hash = issue_hashed_token()
+        node = Node(
+            name=data.name,
+            wireguard_public_key=data.wireguard_public_key,
+            endpoint_ip=data.endpoint_ip or reflected_ip,
+            endpoint_port=data.endpoint_port,
+            vpn_ip=vpn_ip,
+            site_subnet=claim_site_subnet or data.site_subnet,
+            reflected_endpoint_ip=reflected_ip,
+            auth_token_hash=auth_token_hash,
+            auth_token_prefix=auth_token_prefix,
+            auth_token_issued_at=now,
+            device_claim_id=claim_id,
+            status=initial_status,
+            last_seen=now,
+            created_at=now,
         )
+        session.add(node)
+        try:
+            await session.flush()
+        except IntegrityError as exc:
+            await session.rollback()
+            if _is_vpn_ip_unique_violation(exc) and attempt < MAX_VPN_IP_ALLOCATION_RETRIES:
+                continue
+            raise
 
-    await session.commit()
-    await session.refresh(node)
-    return node, auth_token
+        if claim_id:
+            claim_row = await session.get(DeviceClaim, claim_id)
+            if claim_row is None:
+                raise HTTPException(status_code=409, detail="Device claim no longer exists")
+            claim_row.claimed_at = now
+            claim_row.claimed_by_node_id = node.id
+            claim_row.status = (
+                DeviceClaimStatus.ACTIVE if initial_status == NodeStatus.ACTIVE else DeviceClaimStatus.CLAIMED
+            )
+
+        await session.commit()
+        await session.refresh(node)
+        return node, auth_token
+
+    raise HTTPException(status_code=503, detail="Could not allocate a unique VPN IP")
 
 
 async def update_heartbeat(

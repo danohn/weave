@@ -38,7 +38,7 @@ class Node(Base):
     reflected_endpoint_port: Mapped[int | None] = mapped_column(
         Integer, nullable=True
     )
-    vpn_ip: Mapped[str] = mapped_column(String, nullable=False)
+    vpn_ip: Mapped[str] = mapped_column(String, unique=True, nullable=False)
     site_subnet: Mapped[str | None] = mapped_column(String, nullable=True)
     status: Mapped[NodeStatus] = mapped_column(
         Enum(NodeStatus), nullable=False, default=NodeStatus.PENDING

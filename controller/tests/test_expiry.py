@@ -70,6 +70,34 @@ async def test_vpn_ip_unique_per_node(client: AsyncClient):
     assert r1.json()["vpn_ip"] != r2.json()["vpn_ip"]
 
 
+async def test_vpn_ip_allocation_retries_after_unique_conflict(client: AsyncClient, monkeypatch):
+    first = await client.post(
+        "/api/v1/nodes/register",
+        json=node_payload(name="n1", wireguard_public_key="k1=="),
+    )
+    assert first.status_code == 201
+
+    original_allocate = node_service._allocate_vpn_ip
+    calls = 0
+
+    async def fake_allocate(session):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return first.json()["vpn_ip"]
+        return await original_allocate(session)
+
+    monkeypatch.setattr(node_service, "_allocate_vpn_ip", fake_allocate)
+
+    second = await client.post(
+        "/api/v1/nodes/register",
+        json=node_payload(name="n2", wireguard_public_key="k2=="),
+    )
+    assert second.status_code == 201
+    assert second.json()["vpn_ip"] == "10.0.0.2"
+    assert calls == 2
+
+
 async def test_revoked_node_ip_not_reused(client: AsyncClient, make_session):
     """A revoked node's VPN IP stays allocated; new nodes get the next address."""
     r1 = await client.post(
