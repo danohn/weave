@@ -36,6 +36,10 @@ def _ip(*args: str) -> str:
     return _run(["ip", *args])
 
 
+def _best_effort(cmd: list[str]) -> None:
+    subprocess.run(cmd, capture_output=True, text=True)
+
+
 def ensure_private_key(key_file: str) -> str:
     """
     Load private key from *key_file*, generating one if absent.
@@ -96,13 +100,49 @@ def _resolve_host_ips(hostname: str) -> list[str]:
 def sync_underlay_routes(
     peers: list[Peer],
     *,
+    transport_kind: str | None,
     bind_interface: str | None,
     source_ip: str | None,
     gateway: str | None,
 ) -> None:
-    """Install host routes for peer endpoints through a chosen underlay interface."""
+    """Install transport underlay routing.
+
+    For legacy or single-NIC agents, keep the old host-route behavior.
+    When a transport has an explicit source IP, also program a dedicated
+    routing table plus a source-based rule so locally generated WireGuard
+    packets egress via the intended underlay NIC.
+    """
     if not bind_interface:
         return
+    table = _route_table_for_transport(transport_kind)
+    if source_ip:
+        subnet = ".".join(source_ip.split(".")[:3]) + ".0/24"
+        _ip("route", "replace", subnet, "dev", bind_interface, "src", source_ip, "table", table)
+        if gateway:
+            _ip(
+                "route",
+                "replace",
+                "default",
+                "via",
+                gateway,
+                "dev",
+                bind_interface,
+                "src",
+                source_ip,
+                "table",
+                table,
+            )
+        else:
+            _ip("route", "replace", "default", "dev", bind_interface, "src", source_ip, "table", table)
+        rule_priority = {
+            "internet": "9001",
+            "mpls": "9002",
+            "lte": "9003",
+            "other": "9004",
+        }.get(transport_kind or "other", "9004")
+        _best_effort(["ip", "rule", "del", "priority", rule_priority])
+        _ip("rule", "add", "from", f"{source_ip}/32", "lookup", table, "priority", rule_priority)
+
     endpoints: set[str] = set()
     for peer in peers:
         host = peer.preferred_endpoint
@@ -121,6 +161,15 @@ def sync_underlay_routes(
         if source_ip:
             cmd += ["src", source_ip]
         _ip(*cmd)
+        if source_ip:
+            table_cmd = ["route", "replace", f"{endpoint_ip}/32"]
+            if gateway:
+                table_cmd += ["via", gateway]
+            table_cmd += ["dev", bind_interface, "src", source_ip, "table", table]
+            _ip(*table_cmd)
+
+    if source_ip:
+        _best_effort(["ip", "route", "flush", "cache"])
 
 
 def _route_table_for_transport(kind: str | None) -> str:

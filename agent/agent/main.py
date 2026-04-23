@@ -117,6 +117,7 @@ def _apply_overlay_config(settings: Settings, overlay: OverlayConfig) -> None:
         )
         wg.sync_underlay_routes(
             peers_by_kind.get(transport.kind, []),
+            transport_kind=transport.kind,
             bind_interface=local.bind_interface,
             source_ip=local.source_ip,
             gateway=local.gateway,
