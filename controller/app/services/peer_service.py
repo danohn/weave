@@ -111,7 +111,7 @@ async def get_overlay_config(node: Node, session: AsyncSession) -> OverlayConfig
             remote = peer_links.get(transport.kind.value)
             if remote is None:
                 continue
-            preferred_endpoint = remote.reflected_endpoint_ip or remote.endpoint_ip
+            preferred_endpoint = remote.endpoint_ip or remote.reflected_endpoint_ip
             if not preferred_endpoint or not remote.endpoint_port:
                 continue
             peers.append(

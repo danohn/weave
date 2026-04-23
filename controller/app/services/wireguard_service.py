@@ -59,7 +59,7 @@ async def add_transport_peer(
     site_subnet: str | None = None,
 ) -> None:
     """Add or update a node transport link as a WireGuard peer on the controller."""
-    endpoint = link.reflected_endpoint_ip or link.endpoint_ip
+    endpoint = link.endpoint_ip or link.reflected_endpoint_ip
     if not endpoint or not link.endpoint_port or not link.wireguard_public_key or not link.overlay_vpn_ip:
         logger.warning(
             "WG: skipping peer %s/%s due to incomplete transport config",
