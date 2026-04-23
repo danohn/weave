@@ -16,13 +16,13 @@ export default function BgpView() {
 
   const peerContext = (vpnIp) => {
     for (const node of nodes) {
-      if (node.vpn_ip === vpnIp) {
-        return { name: node.name, transport: null }
-      }
       for (const link of node.transport_links || []) {
         if (link.overlay_vpn_ip === vpnIp) {
           return { name: node.name, transport: link.kind }
         }
+      }
+      if (node.vpn_ip === vpnIp) {
+        return { name: node.name, transport: null }
       }
     }
     return { name: vpnIp, transport: null }

@@ -4,6 +4,7 @@ from typing import Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.db.models import NodeStatus, TransportKind, TransportStatus
+from app.services.node_service import canonical_transport_link
 
 
 class TransportLinkHeartbeatReport(BaseModel):
@@ -231,6 +232,7 @@ def build_node_admin_response(node) -> NodeAdminResponse:
         for link in getattr(node, "transport_links", [])
     ]
     active_transport = next((link for link in transport_links if link.is_active), None)
+    canonical_transport = canonical_transport_link(node)
 
     return NodeAdminResponse(
         id=node.id,
@@ -240,7 +242,7 @@ def build_node_admin_response(node) -> NodeAdminResponse:
         endpoint_port=node.endpoint_port,
         reflected_endpoint_ip=node.reflected_endpoint_ip,
         reflected_endpoint_port=node.reflected_endpoint_port,
-        vpn_ip=node.vpn_ip,
+        vpn_ip=canonical_transport.overlay_vpn_ip if canonical_transport is not None else node.vpn_ip,
         site_subnet=node.site_subnet,
         device_claim_id=node.device_claim_id,
         status=node.status,

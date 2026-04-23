@@ -241,8 +241,27 @@ def select_active_transport_links(links: list[TransportLink]) -> list[TransportL
     return ordered
 
 
+def canonical_transport_link(node: Node) -> TransportLink | None:
+    links = [
+        link
+        for link in getattr(node, "transport_links", [])
+        if link.overlay_vpn_ip
+    ]
+    if not links:
+        return None
+    internet_links = sorted(
+        [link for link in links if link.kind == TransportKind.INTERNET],
+        key=lambda item: (item.priority, item.created_at or datetime.now(timezone.utc)),
+    )
+    if internet_links:
+        return internet_links[0]
+    links.sort(key=lambda item: (item.priority, item.created_at or datetime.now(timezone.utc)))
+    return links[0]
+
+
 async def sync_node_compat_fields(session: AsyncSession, node: Node) -> Node:
     active_link = await _get_active_transport_link(session, node.id)
+    canonical_link = canonical_transport_link(node)
     primary_prefix = None
     if node.site_id:
         prefix_result = await session.execute(
@@ -252,6 +271,8 @@ async def sync_node_compat_fields(session: AsyncSession, node: Node) -> Node:
         )
         primary_prefix = prefix_result.scalars().first()
     node.site_subnet = primary_prefix.prefix if primary_prefix is not None else None
+    if canonical_link is not None:
+        node.vpn_ip = canonical_link.overlay_vpn_ip or node.vpn_ip
     if active_link is not None:
         node.endpoint_ip = active_link.endpoint_ip or node.endpoint_ip
         node.endpoint_port = active_link.endpoint_port or node.endpoint_port

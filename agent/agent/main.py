@@ -86,6 +86,7 @@ def _transport_reports(settings: Settings) -> list[TransportLinkHeartbeat]:
                 name=transport.name,
                 kind=transport.kind,
                 wireguard_public_key=wg.ensure_private_key(transport.private_key_file),
+                endpoint_ip=transport.source_ip,
                 endpoint_port=transport.endpoint_port,
                 interface_name=transport.interface,
             )
