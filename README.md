@@ -51,6 +51,11 @@ Two deployment options:
 - **Existing Traefik** (`docker-compose.yml`) — attach Weave to your existing Traefik Docker network.
 - **Bundled Traefik** (`docker-compose.with-traefik.yml`) — self-contained stack, good for evaluation or a dedicated host.
 
+Both production compose files pull prebuilt images from GitHub Container Registry:
+
+- `ghcr.io/danohn/weave-frontend:${WEAVE_VERSION}`
+- `ghcr.io/danohn/weave-controller:${WEAVE_VERSION}`
+
 Copy `.env.example` to `.env` and fill in your values:
 
 ```bash
@@ -60,7 +65,8 @@ cp .env.example .env
 #### Option A: Existing Traefik
 
 ```bash
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 ```
 
 Set `TRAEFIK_NETWORK` to the Docker network your Traefik container is on.
@@ -68,10 +74,25 @@ Set `TRAEFIK_NETWORK` to the Docker network your Traefik container is on.
 #### Option B: Bundled Traefik
 
 ```bash
-docker compose -f docker-compose.with-traefik.yml up -d --build
+docker compose -f docker-compose.with-traefik.yml pull
+docker compose -f docker-compose.with-traefik.yml up -d
 ```
 
 Traefik starts as part of the stack and listens on port 80. Point DNS at the Docker host. Add a TLS certificate resolver to the Traefik service if you need HTTPS.
+
+### Local Docker builds
+
+If you want to run the stack from local source instead of GHCR images, add the development override:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+```
+
+For the bundled Traefik stack:
+
+```bash
+docker compose -f docker-compose.with-traefik.yml -f docker-compose.dev.yml up -d --build
+```
 
 ## Configuration
 
@@ -80,6 +101,7 @@ Traefik starts as part of the stack and listens on port 80. Point DNS at the Doc
 | Variable | Required | Description |
 |---|---|---|
 | `WEAVE_DOMAIN` | Yes | Domain Traefik routes to the dashboard and API |
+| `WEAVE_VERSION` | No | GHCR image tag to deploy (default: `main`) |
 | `SESSION_SECRET` | Yes | Secret key for signing sessions |
 | `SESSION_COOKIE_SECURE` | No | Force Secure session cookies on/off (auto-enables when `WEAVE_DOMAIN` is set) |
 | `OIDC_ISSUER` | Yes | OIDC provider issuer URL |

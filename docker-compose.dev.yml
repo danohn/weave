@@ -1,0 +1,8 @@
+services:
+  nginx:
+    build: ./frontend
+    image: ghcr.io/danohn/weave-frontend:${WEAVE_VERSION:-main}
+
+  controller:
+    build: ./controller
+    image: ghcr.io/danohn/weave-controller:${WEAVE_VERSION:-main}

@@ -1,6 +1,6 @@
 services:
   nginx:
-    build: ./frontend
+    image: ghcr.io/danohn/weave-frontend:${WEAVE_VERSION:-main}
     container_name: weave-ui
     restart: unless-stopped
     networks:
@@ -15,7 +15,7 @@ services:
       - "traefik.http.routers.weave-ui.middlewares=${TRAEFIK_MIDDLEWARE_UI:-${TRAEFIK_MIDDLEWARE:-}}"
 
   controller:
-    build: ./controller
+    image: ghcr.io/danohn/weave-controller:${WEAVE_VERSION:-main}
     container_name: weave-controller
     restart: unless-stopped
     cap_add:
