@@ -14,7 +14,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from agent.controller import Peer
+from agent.controller import DestinationPolicy, Peer
 
 logger = logging.getLogger(__name__)
 
@@ -121,6 +121,71 @@ def sync_underlay_routes(
         if source_ip:
             cmd += ["src", source_ip]
         _ip(*cmd)
+
+
+def _route_table_for_transport(kind: str | None) -> str:
+    return {
+        "internet": "501",
+        "mpls": "502",
+        "lte": "503",
+        "other": "504",
+    }.get(kind or "other", "504")
+
+
+def sync_destination_policy_routes(
+    policies: list[DestinationPolicy],
+    *,
+    previous_rules: dict[str, tuple[str, str]] | None = None,
+) -> dict[str, tuple[str, str]]:
+    """Apply destination-prefix policy through transport-specific route tables."""
+    current_rules: dict[str, tuple[str, str]] = {}
+    for index, policy in enumerate(policies):
+        rule_priority = str(10000 + index)
+        if not policy.enabled or not policy.selected_interface or not policy.selected_transport:
+            continue
+        table = _route_table_for_transport(policy.selected_transport)
+        _ip(
+            "route",
+            "replace",
+            policy.destination_prefix,
+            "dev",
+            policy.selected_interface,
+            "table",
+            table,
+            "metric",
+            "25",
+        )
+        subprocess.run(
+            ["ip", "rule", "del", "priority", rule_priority],
+            capture_output=True,
+            text=True,
+        )
+        _ip(
+            "rule",
+            "add",
+            "to",
+            policy.destination_prefix,
+            "lookup",
+            table,
+            "priority",
+            rule_priority,
+        )
+        current_rules[policy.destination_prefix] = (rule_priority, table)
+
+    for prefix, (priority, table) in (previous_rules or {}).items():
+        if prefix in current_rules:
+            continue
+        subprocess.run(
+            ["ip", "rule", "del", "priority", priority],
+            capture_output=True,
+            text=True,
+        )
+        subprocess.run(
+            ["ip", "route", "del", prefix, "table", table],
+            capture_output=True,
+            text=True,
+        )
+    return current_rules
 
 
 def sync_peers(

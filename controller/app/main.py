@@ -22,7 +22,7 @@ from app.core.agent_ws import broadcast_peers
 from app.core.websocket import broadcast_state
 from app.db.base import AsyncSessionLocal, Base, engine, get_session
 from app.db.models import Node, NodeStatus, Site, TransportLink
-from app.routers import agent_ws, auth, auth_web, bgp, nodes, peers, ws
+from app.routers import agent_ws, auth, auth_web, bgp, nodes, peers, policies, ws
 from app.services import frr_service, node_service, wireguard_service
 
 logger = logging.getLogger(__name__)
@@ -118,6 +118,7 @@ app.include_router(auth_web.router)
 app.include_router(bgp.router)
 app.include_router(nodes.router)
 app.include_router(peers.router)
+app.include_router(policies.router)
 app.include_router(ws.router)
 
 

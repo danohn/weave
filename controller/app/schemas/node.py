@@ -113,14 +113,54 @@ class OverlayTransportConfig(BaseModel):
     is_active: bool
 
 
+class DestinationPolicyResponse(BaseModel):
+    id: str
+    name: str
+    destination_prefix: str
+    description: Optional[str] = None
+    site_id: Optional[str] = None
+    site_name: Optional[str] = None
+    node_id: Optional[str] = None
+    node_name: Optional[str] = None
+    preferred_transport: TransportKind
+    fallback_transport: Optional[TransportKind] = None
+    selected_transport: Optional[TransportKind] = None
+    selected_interface: Optional[str] = None
+    priority: int
+    enabled: bool
+
+
 class OverlayConfigResponse(BaseModel):
     transports: list[OverlayTransportConfig] = Field(default_factory=list)
     peers: list[PeerResponse] = Field(default_factory=list)
+    destination_policies: list[DestinationPolicyResponse] = Field(default_factory=list)
 
 
 class NodeUpdateRequest(BaseModel):
     site_subnet: Optional[str] = None   # pass null/None to clear
     site_name: Optional[str] = None
+
+
+class DestinationPolicyCreateRequest(BaseModel):
+    name: str
+    destination_prefix: str
+    description: Optional[str] = None
+    site_id: Optional[str] = None
+    node_id: Optional[str] = None
+    preferred_transport: TransportKind
+    fallback_transport: Optional[TransportKind] = None
+    priority: int = 100
+    enabled: bool = True
+
+
+class DestinationPolicyUpdateRequest(BaseModel):
+    description: Optional[str] = None
+    site_id: Optional[str] = None
+    node_id: Optional[str] = None
+    preferred_transport: Optional[TransportKind] = None
+    fallback_transport: Optional[TransportKind] = None
+    priority: Optional[int] = None
+    enabled: Optional[bool] = None
 
 
 class NodeAdminResponse(BaseModel):

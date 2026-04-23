@@ -62,6 +62,21 @@ class OverlayTransport:
 class OverlayConfig:
     transports: list[OverlayTransport]
     peers: list[Peer]
+    destination_policies: list["DestinationPolicy"]
+
+
+@dataclass
+class DestinationPolicy:
+    id: str
+    name: str
+    destination_prefix: str
+    description: str | None = None
+    preferred_transport: str | None = None
+    fallback_transport: str | None = None
+    selected_transport: str | None = None
+    selected_interface: str | None = None
+    priority: int = 100
+    enabled: bool = True
 
 
 def parse_peer(data: dict) -> Peer:
@@ -83,6 +98,9 @@ def parse_overlay_config(data: dict) -> OverlayConfig:
     return OverlayConfig(
         transports=[parse_overlay_transport(item) for item in data.get("transports", [])],
         peers=[parse_peer(item) for item in data.get("peers", [])],
+        destination_policies=[
+            DestinationPolicy(**item) for item in data.get("destination_policies", [])
+        ],
     )
 
 

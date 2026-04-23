@@ -8,6 +8,7 @@ export function DataProvider({ children }) {
   const [nodes, setNodes] = useState([])
   const [claims, setClaims] = useState([])
   const [bgp, setBgp] = useState({})
+  const [policies, setPolicies] = useState([])
   const [connected, setConnected] = useState(false)
   const [lastUpdated, setLastUpdated] = useState(null)
 
@@ -19,6 +20,7 @@ export function DataProvider({ children }) {
     if (data.nodes !== undefined) setNodes(data.nodes)
     if (data.claims !== undefined) setClaims(data.claims)
     if (data.bgp !== undefined) setBgp(data.bgp)
+    if (data.policies !== undefined) setPolicies(data.policies)
     setConnected(true)
     setLastUpdated(new Date())
   }, [])
@@ -62,7 +64,7 @@ export function DataProvider({ children }) {
   }, [applyMessage])
 
   return (
-    <DataContext.Provider value={{ nodes, claims, bgp, connected, lastUpdated }}>
+    <DataContext.Provider value={{ nodes, claims, bgp, policies, connected, lastUpdated }}>
       {children}
     </DataContext.Provider>
   )

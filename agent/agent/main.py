@@ -126,6 +126,10 @@ def _apply_overlay_config(settings: Settings, overlay: OverlayConfig) -> None:
             local.private_key_file,
             local.endpoint_port,
         )
+    _apply_overlay_config.previous_policy_rules = wg.sync_destination_policy_routes(
+        overlay.destination_policies,
+        previous_rules=getattr(_apply_overlay_config, "previous_policy_rules", {}),
+    )
 
 
 WS_RECONNECT_INTERVAL = 5  # seconds between WebSocket reconnect attempts

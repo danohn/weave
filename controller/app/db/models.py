@@ -76,6 +76,37 @@ class SitePrefix(Base):
     site: Mapped["Site"] = relationship(back_populates="prefixes", lazy="selectin")
 
 
+class DestinationPolicy(Base):
+    __tablename__ = "destination_policies"
+
+    id: Mapped[str] = mapped_column(
+        String, primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    name: Mapped[str] = mapped_column(String, unique=True, nullable=False, index=True)
+    destination_prefix: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    description: Mapped[str | None] = mapped_column(String, nullable=True)
+    site_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("sites.id"), nullable=True, index=True
+    )
+    node_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("nodes.id"), nullable=True, index=True
+    )
+    preferred_transport: Mapped[TransportKind] = mapped_column(
+        Enum(TransportKind), nullable=False, default=TransportKind.INTERNET
+    )
+    fallback_transport: Mapped[TransportKind | None] = mapped_column(
+        Enum(TransportKind), nullable=True
+    )
+    priority: Mapped[int] = mapped_column(Integer, nullable=False, default=100)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    site: Mapped["Site | None"] = relationship(lazy="selectin")
+    node: Mapped["Node | None"] = relationship(lazy="selectin")
+
+
 class Node(Base):
     __tablename__ = "nodes"
 

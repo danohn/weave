@@ -5,6 +5,7 @@ import LoginView from './views/LoginView'
 import NodesView from './views/NodesView'
 import ClaimsView from './views/ClaimsView'
 import BgpView from './views/BgpView'
+import PoliciesView from './views/PoliciesView'
 import Sidebar from './components/Sidebar'
 import Header from './components/Header'
 
@@ -27,6 +28,7 @@ function AppShell() {
             <Route path="/nodes"  element={<NodesView />} />
             <Route path="/claims" element={<ClaimsView />} />
             <Route path="/bgp"    element={<BgpView />} />
+            <Route path="/policies" element={<PoliciesView />} />
           </Routes>
         </main>
       </div>

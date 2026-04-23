@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.config import controller_overlay_ip_for_kind, settings
-from app.db.models import Node, NodeStatus, TransportLink
+from app.db.models import DestinationPolicy, Node, NodeStatus, TransportLink, TransportStatus
 from app.schemas.node import OverlayConfigResponse, OverlayTransportConfig, PeerResponse
 from app.services.wireguard_service import get_public_key
 
@@ -149,6 +149,17 @@ async def get_overlay_config(node: Node, session: AsyncSession) -> OverlayConfig
                 )
             )
 
+    policy_result = await session.execute(
+        select(DestinationPolicy)
+        .where(DestinationPolicy.enabled.is_(True))
+        .order_by(DestinationPolicy.priority.asc(), DestinationPolicy.created_at.asc())
+    )
+    policies = [
+        item
+        for item in policy_result.scalars().all()
+        if _policy_applies_to_node(item, node)
+    ]
+
     return OverlayConfigResponse(
         transports=[
             OverlayTransportConfig(
@@ -165,4 +176,51 @@ async def get_overlay_config(node: Node, session: AsyncSession) -> OverlayConfig
             for link in transports
         ],
         peers=peers,
+        destination_policies=[
+            _resolve_destination_policy(node, policy)
+            for policy in policies
+        ],
     )
+
+
+def _resolve_destination_policy(node: Node, policy: DestinationPolicy):
+    links_by_kind = {
+        link.kind: link
+        for link in getattr(node, "transport_links", [])
+        if link.admin_state_up and link.interface_name and link.overlay_vpn_ip
+    }
+    selected = None
+    preferred = links_by_kind.get(policy.preferred_transport)
+    if preferred is not None and preferred.status != TransportStatus.DOWN:
+        selected = preferred
+    elif policy.fallback_transport is not None:
+        fallback = links_by_kind.get(policy.fallback_transport)
+        if fallback is not None and fallback.status != TransportStatus.DOWN:
+            selected = fallback
+
+    from app.schemas.node import DestinationPolicyResponse
+
+    return DestinationPolicyResponse(
+        id=policy.id,
+        name=policy.name,
+        destination_prefix=policy.destination_prefix,
+        description=policy.description,
+        site_id=policy.site_id,
+        site_name=policy.site.name if getattr(policy, "site", None) is not None else None,
+        node_id=policy.node_id,
+        node_name=policy.node.name if getattr(policy, "node", None) is not None else None,
+        preferred_transport=policy.preferred_transport,
+        fallback_transport=policy.fallback_transport,
+        selected_transport=selected.kind if selected is not None else None,
+        selected_interface=selected.interface_name if selected is not None else None,
+        priority=policy.priority,
+        enabled=policy.enabled,
+    )
+
+
+def _policy_applies_to_node(policy: DestinationPolicy, node: Node) -> bool:
+    if policy.node_id is not None:
+        return policy.node_id == node.id
+    if policy.site_id is not None:
+        return policy.site_id == node.site_id
+    return True
