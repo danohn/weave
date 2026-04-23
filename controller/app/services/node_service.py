@@ -141,7 +141,7 @@ async def _create_default_transport_link(
         status=TransportStatus.UNKNOWN,
         is_active=True,
         priority=100,
-        interface_name="wg0",
+        interface_name="weave-internet",
     )
     session.add(link)
     await session.flush()
@@ -158,7 +158,7 @@ async def _get_active_transport_link(session: AsyncSession, node_id: str) -> Tra
 
 
 def _interface_name_for_kind(kind: TransportKind) -> str:
-    return "wg0" if kind == TransportKind.INTERNET else f"wg-{kind.value}"
+    return f"weave-{kind.value}"
 
 
 def _priority_for_kind(kind: TransportKind) -> int:

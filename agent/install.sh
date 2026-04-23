@@ -42,9 +42,10 @@ Optional:
   --claim-token TOKEN     Claim token for automatic activation
   --preauth-token TOKEN   Deprecated alias for --claim-token
   --endpoint-port PORT    WireGuard listen port (default: 51820)
-  --interface IFACE       WireGuard interface name (default: wg0)
+  --interface IFACE       Overlay interface name for legacy single transport
   --heartbeat-interval N  Heartbeat interval in seconds (default: 30)
   --peer-poll-interval N  Peer poll interval in seconds (default: 60)
+  --transport SPEC        Transport mapping: kind:underlay_if[:port]
   --repo-ref REF          Git ref for the agent package and service file (default: main)
 EOF
   exit 1
@@ -60,10 +61,11 @@ CONTROLLER_URL=""
 NODE_NAME="$(hostname)"
 CLAIM_TOKEN=""
 ENDPOINT_PORT="51820"
-INTERFACE="wg0"
+INTERFACE="weave-internet"
 HEARTBEAT_INTERVAL="30"
 PEER_POLL_INTERVAL="60"
 REPO_REF="${WEAVE_REPO_REF:-main}"
+declare -a TRANSPORT_SPECS=()
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -75,6 +77,7 @@ while [[ $# -gt 0 ]]; do
     --interface)          INTERFACE="$2";           shift 2 ;;
     --heartbeat-interval) HEARTBEAT_INTERVAL="$2"; shift 2 ;;
     --peer-poll-interval) PEER_POLL_INTERVAL="$2"; shift 2 ;;
+    --transport)          TRANSPORT_SPECS+=("$2");  shift 2 ;;
     --repo-ref)           REPO_REF="$2";            shift 2 ;;
     *) echo "Unknown option: $1"; usage ;;
   esac
@@ -84,6 +87,135 @@ if [[ -z "$CONTROLLER_URL" ]]; then
   echo "Error: --controller-url is required"
   usage
 fi
+
+detect_nics() {
+  ip -o link show \
+    | awk -F': ' '{print $2}' \
+    | grep -Ev '^(lo|docker[0-9]*|veth.*|br-.*|wg.*|weave-.*)$' || true
+}
+
+first_ipv4_for_iface() {
+  ip -4 -o addr show dev "$1" scope global | awk '{print $4}' | cut -d/ -f1 | head -n1
+}
+
+gateway_for_iface() {
+  ip route show default dev "$1" | awk '/default/ {print $3}' | head -n1
+}
+
+build_transport_json() {
+  python3 - "$@" <<'PY'
+import json, sys
+items = []
+for spec in sys.argv[1:]:
+    kind, iface, port, source_ip, gateway = (spec.split("|") + ["", "", ""])[:5]
+    items.append({
+        "name": "wan1" if kind == "internet" else f"{kind}1",
+        "kind": kind,
+        "interface": f"weave-{kind}",
+        "endpoint_port": int(port),
+        "private_key_file": f"/etc/weave/privatekey-{kind}",
+        "bind_interface": iface or None,
+        "source_ip": source_ip or None,
+        "gateway": gateway or None,
+    })
+print(json.dumps(items, separators=(",", ":")))
+PY
+}
+
+prompt_transport_for_kind() {
+  local kind="$1"
+  local default_port="$2"
+  local iface=""
+  local port=""
+
+  read -r -p "    Interface for ${kind} transport (blank to skip): " iface
+  if [[ -z "${iface}" ]]; then
+    return 1
+  fi
+  read -r -p "    UDP listen port for ${kind} transport [${default_port}]: " port
+  port="${port:-$default_port}"
+  TRANSPORT_SPECS+=("${kind}|${iface}|${port}|$(first_ipv4_for_iface "$iface")|$(gateway_for_iface "$iface")")
+  return 0
+}
+
+step "Detecting underlay interfaces..."
+mapfile -t DETECTED_NICS < <(detect_nics)
+if [[ ${#TRANSPORT_SPECS[@]} -eq 0 ]]; then
+  if [[ ${#DETECTED_NICS[@]} -eq 1 ]]; then
+    AUTO_IFACE="${DETECTED_NICS[0]}"
+    AUTO_SOURCE_IP="$(first_ipv4_for_iface "$AUTO_IFACE")"
+    AUTO_GATEWAY="$(gateway_for_iface "$AUTO_IFACE")"
+    TRANSPORT_SPECS+=("internet|${AUTO_IFACE}|${ENDPOINT_PORT}|${AUTO_SOURCE_IP}|${AUTO_GATEWAY}")
+    info "Detected single underlay interface ${AUTO_IFACE}; binding internet transport automatically"
+  elif [[ ${#DETECTED_NICS[@]} -gt 1 ]]; then
+    log ""
+    log "Detected multiple underlay interfaces:"
+    for nic in "${DETECTED_NICS[@]}"; do
+      info "${nic}  ip=$(first_ipv4_for_iface "$nic")  gw=$(gateway_for_iface "$nic")"
+    done
+    log ""
+    log "Multiple NICs require explicit transport mappings."
+    log "Use repeated --transport kind:iface[:port] flags for automation,"
+    log "or answer the prompts below."
+    log ""
+    if ! prompt_transport_for_kind "internet" "$ENDPOINT_PORT"; then
+      echo "Error: internet transport is required when multiple NICs are present"
+      echo "Hint: pass --transport internet:<iface>[:port]"
+      exit 1
+    fi
+    prompt_transport_for_kind "mpls" "51821" || true
+    prompt_transport_for_kind "lte" "51822" || true
+  else
+    info "No non-loopback underlay interfaces detected; leaving transport binding unset"
+    TRANSPORT_SPECS+=("internet||${ENDPOINT_PORT}||")
+  fi
+fi
+
+for spec in "${TRANSPORT_SPECS[@]}"; do
+  IFS=':' read -r maybe_kind maybe_iface maybe_port <<< "$spec"
+  if [[ "$spec" == *"|"* ]]; then
+    continue
+  fi
+  if [[ -z "${maybe_kind:-}" || -z "${maybe_iface:-}" ]]; then
+    echo "Error: invalid --transport value '$spec'"
+    echo "Expected format: kind:underlay_if[:port]"
+    exit 1
+  fi
+done
+
+if [[ ${#TRANSPORT_SPECS[@]} -gt 0 ]]; then
+  NORMALIZED_SPECS=()
+  for spec in "${TRANSPORT_SPECS[@]}"; do
+    if [[ "$spec" == *"|"* ]]; then
+      NORMALIZED_SPECS+=("$spec")
+      continue
+    fi
+    IFS=':' read -r kind iface port <<< "$spec"
+    case "$kind" in
+      internet|mpls|lte|other) ;;
+      *)
+        echo "Error: unsupported transport kind '$kind'"
+        exit 1
+        ;;
+    esac
+    if ! printf '%s\n' "${DETECTED_NICS[@]}" | grep -qx "$iface"; then
+      echo "Error: interface '$iface' not detected on this host"
+      exit 1
+    fi
+    if [[ -z "${port:-}" ]]; then
+      case "$kind" in
+        internet) port="$ENDPOINT_PORT" ;;
+        mpls) port="51821" ;;
+        lte) port="51822" ;;
+        other) port="51823" ;;
+      esac
+    fi
+    NORMALIZED_SPECS+=("${kind}|${iface}|${port}|$(first_ipv4_for_iface "$iface")|$(gateway_for_iface "$iface")")
+  done
+  TRANSPORT_SPECS=("${NORMALIZED_SPECS[@]}")
+fi
+
+TRANSPORTS_JSON="$(build_transport_json "${TRANSPORT_SPECS[@]}")"
 
 # ── Idempotency check ────────────────────────────────────────────────────────
 if [[ -f "/etc/weave/state.json" ]]; then
@@ -109,7 +241,7 @@ log "Weave Agent Installer"
 log "────────────────────────────────────────"
 info "Node:       $NODE_NAME"
 info "Controller: $CONTROLLER_URL"
-info "Interface:  $INTERFACE  (port $ENDPOINT_PORT)"
+info "Transports: $TRANSPORTS_JSON"
 info "Repo ref:   $REPO_REF"
 log ""
 
@@ -151,6 +283,7 @@ chmod 700 /etc/weave
   printf 'NODE_NAME=%s\n'           "$NODE_NAME"
   printf 'ENDPOINT_PORT=%s\n'       "$ENDPOINT_PORT"
   printf 'INTERFACE=%s\n'           "$INTERFACE"
+  printf 'TRANSPORTS_JSON=%s\n'     "$TRANSPORTS_JSON"
   printf 'HEARTBEAT_INTERVAL=%s\n'  "$HEARTBEAT_INTERVAL"
   printf 'PEER_POLL_INTERVAL=%s\n'  "$PEER_POLL_INTERVAL"
   [[ -n "$CLAIM_TOKEN" ]] && printf 'CLAIM_TOKEN=%s\n' "$CLAIM_TOKEN"

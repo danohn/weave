@@ -9,6 +9,7 @@ unchanged peers are unaffected.
 
 import logging
 import os
+import socket
 import subprocess
 import tempfile
 from pathlib import Path
@@ -29,6 +30,10 @@ def _interface_exists(interface: str) -> bool:
     return subprocess.run(
         ["ip", "link", "show", interface], capture_output=True
     ).returncode == 0
+
+
+def _ip(*args: str) -> str:
+    return _run(["ip", *args])
 
 
 def ensure_private_key(key_file: str) -> str:
@@ -78,6 +83,44 @@ def setup_interface(
           "listen-port", str(listen_port)])
     _run(["ip", "link", "set", interface, "up"])
     logger.info("Interface %s configured (port %d)", interface, listen_port)
+
+
+def _resolve_host_ips(hostname: str) -> list[str]:
+    try:
+        infos = socket.getaddrinfo(hostname, None, socket.AF_INET, socket.SOCK_DGRAM)
+    except socket.gaierror:
+        return []
+    return sorted({item[4][0] for item in infos})
+
+
+def sync_underlay_routes(
+    peers: list[Peer],
+    *,
+    bind_interface: str | None,
+    source_ip: str | None,
+    gateway: str | None,
+) -> None:
+    """Install host routes for peer endpoints through a chosen underlay interface."""
+    if not bind_interface:
+        return
+    endpoints: set[str] = set()
+    for peer in peers:
+        host = peer.preferred_endpoint
+        if not host:
+            continue
+        if host.replace(".", "").isdigit() and host.count(".") == 3:
+            endpoints.add(host)
+            continue
+        endpoints.update(_resolve_host_ips(host))
+
+    for endpoint_ip in sorted(endpoints):
+        cmd = ["route", "replace", f"{endpoint_ip}/32"]
+        if gateway:
+            cmd += ["via", gateway]
+        cmd += ["dev", bind_interface]
+        if source_ip:
+            cmd += ["src", source_ip]
+        _ip(*cmd)
 
 
 def sync_peers(

@@ -114,6 +114,12 @@ def _apply_overlay_config(settings: Settings, overlay: OverlayConfig) -> None:
             private_key_file=local.private_key_file,
             listen_port=local.endpoint_port,
         )
+        wg.sync_underlay_routes(
+            peers_by_kind.get(transport.kind, []),
+            bind_interface=local.bind_interface,
+            source_ip=local.source_ip,
+            gateway=local.gateway,
+        )
         wg.sync_peers(
             local.interface,
             peers_by_kind.get(transport.kind, []),
