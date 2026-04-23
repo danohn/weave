@@ -113,6 +113,7 @@ async def add_neighbor(link: TransportLink, node_name: str) -> None:
             "configure terminal",
             f"router bgp {BGP_ASN}",
             f"neighbor {link.overlay_vpn_ip} peer-group NODES",
+            f"neighbor {link.overlay_vpn_ip} update-source {link.controller_vpn_ip}",
             f"neighbor {link.overlay_vpn_ip} route-map {route_map} in",
             f"route-map {route_map} permit 10",
             f"set local-preference {local_pref}",
