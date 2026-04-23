@@ -44,7 +44,11 @@ async def find_node_for_token(session: AsyncSession, token: str) -> Node | None:
     )
     nodes = list(result.scalars().all())
     return next(
-        (candidate for candidate in nodes if verify_token(token, candidate.auth_token_hash)),
+        (
+            candidate
+            for candidate in nodes
+            if verify_token(token, candidate.auth_token_hash)
+        ),
         None,
     )
 

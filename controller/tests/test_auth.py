@@ -1,4 +1,5 @@
 """Tests for device-claim management and claim-gated node registration."""
+
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -181,7 +182,8 @@ async def test_register_rejects_name_mismatch(client: AsyncClient):
 
 async def test_register_rejects_expired_claim(client: AsyncClient):
     claim = await create_claim(
-        client, expires_at=(datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat()
+        client,
+        expires_at=(datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat(),
     )
     resp = await client.post(
         "/api/v1/nodes/register",

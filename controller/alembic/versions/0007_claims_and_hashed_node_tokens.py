@@ -5,6 +5,7 @@ Revises: 0006
 Create Date: 2026-04-22 00:00:00.000000
 
 """
+
 from typing import Sequence, Union
 
 import sqlalchemy as sa
@@ -42,32 +43,61 @@ def upgrade() -> None:
         sa.Column("expected_name", sa.String(), nullable=True),
         sa.Column("site_subnet", sa.String(), nullable=True),
         sa.Column("expires_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("status", sa.Enum("UNCLAIMED", "CLAIMED", "ACTIVE", "REVOKED", name="deviceclaimstatus"), nullable=False),
+        sa.Column(
+            "status",
+            sa.Enum(
+                "UNCLAIMED", "CLAIMED", "ACTIVE", "REVOKED", name="deviceclaimstatus"
+            ),
+            nullable=False,
+        ),
         sa.Column("token_hash", sa.String(), nullable=False),
         sa.Column("token_prefix", sa.String(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            nullable=False,
+        ),
         sa.Column("claimed_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("claimed_by_node_id", sa.String(), nullable=True),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index("ix_device_claims_device_id", "device_claims", ["device_id"], unique=True)
-    op.create_index("ix_device_claims_token_hash", "device_claims", ["token_hash"], unique=True)
+    op.create_index(
+        "ix_device_claims_device_id", "device_claims", ["device_id"], unique=True
+    )
+    op.create_index(
+        "ix_device_claims_token_hash", "device_claims", ["token_hash"], unique=True
+    )
 
     with op.batch_alter_table("nodes") as batch_op:
         if "auth_token_hash" not in columns:
-            batch_op.add_column(sa.Column("auth_token_hash", sa.String(), nullable=True))
+            batch_op.add_column(
+                sa.Column("auth_token_hash", sa.String(), nullable=True)
+            )
         if "auth_token_prefix" not in columns:
-            batch_op.add_column(sa.Column("auth_token_prefix", sa.String(), nullable=True))
+            batch_op.add_column(
+                sa.Column("auth_token_prefix", sa.String(), nullable=True)
+            )
         if "auth_token_issued_at" not in columns:
-            batch_op.add_column(sa.Column("auth_token_issued_at", sa.DateTime(timezone=True), nullable=True))
+            batch_op.add_column(
+                sa.Column(
+                    "auth_token_issued_at", sa.DateTime(timezone=True), nullable=True
+                )
+            )
         if "device_claim_id" not in columns:
-            batch_op.add_column(sa.Column("device_claim_id", sa.String(), nullable=True))
-            batch_op.create_foreign_key("fk_nodes_device_claim_id", "device_claims", ["device_claim_id"], ["id"])
+            batch_op.add_column(
+                sa.Column("device_claim_id", sa.String(), nullable=True)
+            )
+            batch_op.create_foreign_key(
+                "fk_nodes_device_claim_id", "device_claims", ["device_claim_id"], ["id"]
+            )
 
     bind = op.get_bind()
 
     if "auth_token" in columns:
-        rows = bind.execute(sa.text("SELECT id, auth_token, created_at FROM nodes")).fetchall()
+        rows = bind.execute(
+            sa.text("SELECT id, auth_token, created_at FROM nodes")
+        ).fetchall()
         for row in rows:
             bind.execute(
                 sa.text(
@@ -132,17 +162,29 @@ def upgrade() -> None:
         op.drop_table("preauth_tokens")
 
     with op.batch_alter_table("nodes") as batch_op:
-        batch_op.alter_column("auth_token_hash", existing_type=sa.String(), nullable=False)
-        batch_op.alter_column("auth_token_prefix", existing_type=sa.String(), nullable=False)
-        batch_op.alter_column("auth_token_issued_at", existing_type=sa.DateTime(timezone=True), nullable=False)
+        batch_op.alter_column(
+            "auth_token_hash", existing_type=sa.String(), nullable=False
+        )
+        batch_op.alter_column(
+            "auth_token_prefix", existing_type=sa.String(), nullable=False
+        )
+        batch_op.alter_column(
+            "auth_token_issued_at",
+            existing_type=sa.DateTime(timezone=True),
+            nullable=False,
+        )
         if "auth_token" in columns:
             indexes = _index_names("nodes")
             if "ix_nodes_auth_token" in indexes:
                 batch_op.drop_index("ix_nodes_auth_token")
             batch_op.drop_column("auth_token")
 
-    op.create_index("ix_nodes_auth_token_hash", "nodes", ["auth_token_hash"], unique=False)
-    op.create_index("ix_nodes_auth_token_prefix", "nodes", ["auth_token_prefix"], unique=False)
+    op.create_index(
+        "ix_nodes_auth_token_hash", "nodes", ["auth_token_hash"], unique=False
+    )
+    op.create_index(
+        "ix_nodes_auth_token_prefix", "nodes", ["auth_token_prefix"], unique=False
+    )
 
 
 def downgrade() -> None:
@@ -157,7 +199,9 @@ def downgrade() -> None:
         sa.Column("used_by_node_id", sa.String(), nullable=True),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index("ix_preauth_tokens_token_hash", "preauth_tokens", ["token_hash"], unique=True)
+    op.create_index(
+        "ix_preauth_tokens_token_hash", "preauth_tokens", ["token_hash"], unique=True
+    )
 
     bind = op.get_bind()
     rows = bind.execute(

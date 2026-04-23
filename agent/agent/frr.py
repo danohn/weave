@@ -22,10 +22,7 @@ _REQUIRED_DAEMONS = {"bgpd": "yes", "bfdd": "yes"}
 
 def is_available() -> bool:
     """Return True if FRR is installed on this system."""
-    return (
-        Path("/usr/lib/frr/bgpd").exists()
-        or Path("/usr/sbin/bgpd").exists()
-    )
+    return Path("/usr/lib/frr/bgpd").exists() or Path("/usr/sbin/bgpd").exists()
 
 
 def _ensure_daemons() -> None:
@@ -59,7 +56,9 @@ def _ensure_daemons() -> None:
     updated = "".join(result)
     if updated != original:
         p.write_text(updated)
-        logger.info("Updated FRR daemons file (enabled: %s)", ", ".join(_REQUIRED_DAEMONS))
+        logger.info(
+            "Updated FRR daemons file (enabled: %s)", ", ".join(_REQUIRED_DAEMONS)
+        )
 
 
 def apply_config(config: str) -> None:
@@ -86,7 +85,8 @@ def apply_config(config: str) -> None:
     try:
         active = subprocess.run(
             ["systemctl", "is-active", "frr"],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         ).stdout.strip()
         if active == "active":
             subprocess.run(["systemctl", "reload", "frr"], check=True)

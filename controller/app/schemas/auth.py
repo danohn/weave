@@ -16,6 +16,7 @@ class DeviceClaimCreateRequest(BaseModel):
 
 class DeviceClaimCreatedResponse(BaseModel):
     """Returned once at creation — includes the plaintext claim token."""
+
     id: str
     token: str
     token_prefix: str
@@ -32,6 +33,7 @@ class DeviceClaimCreatedResponse(BaseModel):
 
 class DeviceClaimResponse(BaseModel):
     """Returned by list/get — never exposes the plaintext token."""
+
     model_config = ConfigDict(from_attributes=True)
 
     id: str

@@ -107,7 +107,10 @@ def _apply_overlay_config(settings: Settings, overlay: OverlayConfig) -> None:
     for transport in overlay.transports:
         local = transport_by_kind.get(transport.kind)
         if local is None:
-            logger.warning("Controller returned transport %s but agent is not configured for it", transport.kind)
+            logger.warning(
+                "Controller returned transport %s but agent is not configured for it",
+                transport.kind,
+            )
             continue
         wg.setup_interface(
             interface=local.interface,
@@ -162,8 +165,17 @@ async def peer_loop(
             sig = wg.peer_signature(transport_peers)
             if sig == last_sig_by_kind.get(kind):
                 continue
-            logger.info("Peer list changed for %s (%d peer(s)) — syncing", kind, len(transport_peers))
-            wg.sync_peers(local.interface, transport_peers, local.private_key_file, local.endpoint_port)
+            logger.info(
+                "Peer list changed for %s (%d peer(s)) — syncing",
+                kind,
+                len(transport_peers),
+            )
+            wg.sync_peers(
+                local.interface,
+                transport_peers,
+                local.private_key_file,
+                local.endpoint_port,
+            )
             last_sig_by_kind[kind] = sig
 
     while True:
@@ -245,7 +257,9 @@ async def run() -> None:
             if attempt == 10:
                 raise
             logger.warning(
-                "Failed to fetch initial overlay config (attempt %d/10): %s — retrying in 5s", attempt, exc
+                "Failed to fetch initial overlay config (attempt %d/10): %s — retrying in 5s",
+                attempt,
+                exc,
             )
             await asyncio.sleep(5)
     if overlay is None:
@@ -259,7 +273,10 @@ async def run() -> None:
     except Exception as exc:
         logger.warning("Could not apply FRR config: %s", exc)
 
-    logger.info("Configured %d transport interface(s) — entering main loop", len(overlay.transports))
+    logger.info(
+        "Configured %d transport interface(s) — entering main loop",
+        len(overlay.transports),
+    )
 
     loop = asyncio.get_running_loop()
     shutdown_event = asyncio.Event()

@@ -23,7 +23,9 @@ def _make_hs256_jwt(claims: dict, *, secret: str, kid: str = "test-key") -> str:
             _b64url(json.dumps(claims, separators=(",", ":")).encode()),
         ]
     )
-    signature = hmac.new(secret.encode(), signing_input.encode(), hashlib.sha256).digest()
+    signature = hmac.new(
+        secret.encode(), signing_input.encode(), hashlib.sha256
+    ).digest()
     return f"{signing_input}.{_b64url(signature)}"
 
 
@@ -83,7 +85,9 @@ async def test_oidc_callback_accepts_valid_signed_id_token(
         auth_web._jwks_cache = jwks
         return jwks
 
-    monkeypatch.setattr(auth_web, "_exchange_code_for_tokens", fake_exchange_code_for_tokens)
+    monkeypatch.setattr(
+        auth_web, "_exchange_code_for_tokens", fake_exchange_code_for_tokens
+    )
     monkeypatch.setattr(auth_web, "_fetch_jwks", fake_fetch_jwks)
 
     callback = await client.get(f"/auth/callback?code=test-code&state={state}")
@@ -128,7 +132,9 @@ async def test_oidc_callback_rejects_invalid_id_token_signature(
         auth_web._jwks_cache = jwks
         return jwks
 
-    monkeypatch.setattr(auth_web, "_exchange_code_for_tokens", fake_exchange_code_for_tokens)
+    monkeypatch.setattr(
+        auth_web, "_exchange_code_for_tokens", fake_exchange_code_for_tokens
+    )
     monkeypatch.setattr(auth_web, "_fetch_jwks", fake_fetch_jwks)
 
     callback = await client.get(f"/auth/callback?code=test-code&state={state}")

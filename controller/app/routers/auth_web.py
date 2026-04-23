@@ -148,7 +148,9 @@ async def oidc_callback(
     if settings.OIDC_ADMIN_GROUP:
         groups = claims.get("groups", [])
         if settings.OIDC_ADMIN_GROUP not in groups:
-            return JSONResponse({"detail": "Forbidden: not in required group"}, status_code=403)
+            return JSONResponse(
+                {"detail": "Forbidden: not in required group"}, status_code=403
+            )
 
     username = (
         claims.get("preferred_username")

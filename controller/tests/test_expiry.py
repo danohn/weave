@@ -1,7 +1,7 @@
 """Tests for stale-node expiry and VPN IP auto-allocation."""
+
 from datetime import datetime, timedelta, timezone
 
-import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 
@@ -70,7 +70,9 @@ async def test_vpn_ip_unique_per_node(client: AsyncClient):
     assert r1.json()["vpn_ip"] != r2.json()["vpn_ip"]
 
 
-async def test_vpn_ip_allocation_retries_after_unique_conflict(client: AsyncClient, monkeypatch):
+async def test_vpn_ip_allocation_retries_after_unique_conflict(
+    client: AsyncClient, monkeypatch
+):
     first = await client.post(
         "/api/v1/nodes/register",
         json=node_payload(name="n1", wireguard_public_key="k1=="),

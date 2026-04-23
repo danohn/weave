@@ -14,7 +14,9 @@ def node_payload(**overrides) -> dict:
 
 
 async def test_create_policy_and_resolve_overlay_config(client: AsyncClient):
-    reg = await client.post("/api/v1/nodes/register", json=node_payload(name="branch-perth"))
+    reg = await client.post(
+        "/api/v1/nodes/register", json=node_payload(name="branch-perth")
+    )
     assert reg.status_code == 201
     node_id = reg.json()["id"]
     token = reg.json()["auth_token"]
@@ -66,7 +68,9 @@ async def test_create_policy_and_resolve_overlay_config(client: AsyncClient):
 
 
 async def test_policy_falls_back_when_preferred_transport_down(client: AsyncClient):
-    reg = await client.post("/api/v1/nodes/register", json=node_payload(name="branch-paris"))
+    reg = await client.post(
+        "/api/v1/nodes/register", json=node_payload(name="branch-paris")
+    )
     assert reg.status_code == 201
     node_id = reg.json()["id"]
     token = reg.json()["auth_token"]
@@ -115,12 +119,25 @@ async def test_policy_falls_back_when_preferred_transport_down(client: AsyncClie
 
 
 async def test_site_scoped_policy_only_applies_to_matching_site(client: AsyncClient):
-    reg_a = await client.post("/api/v1/nodes/register", json=node_payload(name="alpha", site_subnet="10.1.0.0/24"))
-    reg_b = await client.post("/api/v1/nodes/register", json=node_payload(name="beta", wireguard_public_key="beta-pubkey==", endpoint_ip="2.2.2.2", site_subnet="10.2.0.0/24"))
+    reg_a = await client.post(
+        "/api/v1/nodes/register",
+        json=node_payload(name="alpha", site_subnet="10.1.0.0/24"),
+    )
+    reg_b = await client.post(
+        "/api/v1/nodes/register",
+        json=node_payload(
+            name="beta",
+            wireguard_public_key="beta-pubkey==",
+            endpoint_ip="2.2.2.2",
+            site_subnet="10.2.0.0/24",
+        ),
+    )
     assert reg_a.status_code == 201
     assert reg_b.status_code == 201
 
-    nodes = await client.get("/api/v1/nodes/", headers={"Authorization": f"Bearer {ADMIN_TOKEN}"})
+    nodes = await client.get(
+        "/api/v1/nodes/", headers={"Authorization": f"Bearer {ADMIN_TOKEN}"}
+    )
     assert nodes.status_code == 200
     alpha = next(item for item in nodes.json() if item["id"] == reg_a.json()["id"])
     beta = next(item for item in nodes.json() if item["id"] == reg_b.json()["id"])
@@ -155,7 +172,12 @@ async def test_site_scoped_policy_only_applies_to_matching_site(client: AsyncCli
 
 async def test_node_scoped_policy_only_applies_to_matching_node(client: AsyncClient):
     reg_a = await client.post("/api/v1/nodes/register", json=node_payload(name="gamma"))
-    reg_b = await client.post("/api/v1/nodes/register", json=node_payload(name="delta", wireguard_public_key="delta-pubkey==", endpoint_ip="3.3.3.3"))
+    reg_b = await client.post(
+        "/api/v1/nodes/register",
+        json=node_payload(
+            name="delta", wireguard_public_key="delta-pubkey==", endpoint_ip="3.3.3.3"
+        ),
+    )
     assert reg_a.status_code == 201
     assert reg_b.status_code == 201
 

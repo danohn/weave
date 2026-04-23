@@ -5,6 +5,7 @@ Revises: 0008
 Create Date: 2026-04-23 00:00:00.000000
 
 """
+
 import uuid
 from typing import Sequence, Union
 
@@ -46,7 +47,12 @@ def upgrade() -> None:
             sa.Column("id", sa.String(), nullable=False),
             sa.Column("name", sa.String(), nullable=False),
             sa.Column("description", sa.String(), nullable=True),
-            sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+            sa.Column(
+                "created_at",
+                sa.DateTime(timezone=True),
+                server_default=sa.func.now(),
+                nullable=False,
+            ),
             sa.PrimaryKeyConstraint("id"),
         )
     if "ix_sites_name" not in _index_names("sites"):
@@ -58,14 +64,23 @@ def upgrade() -> None:
             sa.Column("id", sa.String(), nullable=False),
             sa.Column("site_id", sa.String(), nullable=False),
             sa.Column("prefix", sa.String(), nullable=False),
-            sa.Column("advertise", sa.Boolean(), nullable=False, server_default=sa.true()),
+            sa.Column(
+                "advertise", sa.Boolean(), nullable=False, server_default=sa.true()
+            ),
             sa.Column("priority", sa.Integer(), nullable=False, server_default="100"),
-            sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+            sa.Column(
+                "created_at",
+                sa.DateTime(timezone=True),
+                server_default=sa.func.now(),
+                nullable=False,
+            ),
             sa.ForeignKeyConstraint(["site_id"], ["sites.id"]),
             sa.PrimaryKeyConstraint("id"),
         )
     if "ix_site_prefixes_site_id" not in _index_names("site_prefixes"):
-        op.create_index("ix_site_prefixes_site_id", "site_prefixes", ["site_id"], unique=False)
+        op.create_index(
+            "ix_site_prefixes_site_id", "site_prefixes", ["site_id"], unique=False
+        )
 
     if "transport_links" not in tables:
         op.create_table(
@@ -73,8 +88,14 @@ def upgrade() -> None:
             sa.Column("id", sa.String(), nullable=False),
             sa.Column("node_id", sa.String(), nullable=False),
             sa.Column("name", sa.String(), nullable=False),
-            sa.Column("kind", sa.Enum("INTERNET", "MPLS", "LTE", "OTHER", name="transportkind"), nullable=False),
-            sa.Column("admin_state_up", sa.Boolean(), nullable=False, server_default=sa.true()),
+            sa.Column(
+                "kind",
+                sa.Enum("INTERNET", "MPLS", "LTE", "OTHER", name="transportkind"),
+                nullable=False,
+            ),
+            sa.Column(
+                "admin_state_up", sa.Boolean(), nullable=False, server_default=sa.true()
+            ),
             sa.Column("endpoint_ip", sa.String(), nullable=True),
             sa.Column("endpoint_port", sa.Integer(), nullable=True),
             sa.Column("reflected_endpoint_ip", sa.String(), nullable=True),
@@ -82,17 +103,32 @@ def upgrade() -> None:
             sa.Column("rtt_ms", sa.Integer(), nullable=True),
             sa.Column("jitter_ms", sa.Integer(), nullable=True),
             sa.Column("loss_pct", sa.Integer(), nullable=True),
-            sa.Column("status", sa.Enum("UNKNOWN", "HEALTHY", "DEGRADED", "DOWN", name="transportstatus"), nullable=False),
-            sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.true()),
+            sa.Column(
+                "status",
+                sa.Enum(
+                    "UNKNOWN", "HEALTHY", "DEGRADED", "DOWN", name="transportstatus"
+                ),
+                nullable=False,
+            ),
+            sa.Column(
+                "is_active", sa.Boolean(), nullable=False, server_default=sa.true()
+            ),
             sa.Column("priority", sa.Integer(), nullable=False, server_default="100"),
             sa.Column("interface_name", sa.String(), nullable=True),
             sa.Column("last_reported_at", sa.DateTime(timezone=True), nullable=True),
-            sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+            sa.Column(
+                "created_at",
+                sa.DateTime(timezone=True),
+                server_default=sa.func.now(),
+                nullable=False,
+            ),
             sa.ForeignKeyConstraint(["node_id"], ["nodes.id"]),
             sa.PrimaryKeyConstraint("id"),
         )
     if "ix_transport_links_node_id" not in _index_names("transport_links"):
-        op.create_index("ix_transport_links_node_id", "transport_links", ["node_id"], unique=False)
+        op.create_index(
+            "ix_transport_links_node_id", "transport_links", ["node_id"], unique=False
+        )
 
     if is_sqlite:
         if "_alembic_tmp_nodes" in _table_names():
@@ -111,7 +147,9 @@ def upgrade() -> None:
             if "ix_nodes_site_id" not in node_indexes:
                 batch_op.create_index("ix_nodes_site_id", ["site_id"], unique=False)
             if "site_id" not in node_columns:
-                batch_op.create_foreign_key("fk_nodes_site_id", "sites", ["site_id"], ["id"])
+                batch_op.create_foreign_key(
+                    "fk_nodes_site_id", "sites", ["site_id"], ["id"]
+                )
 
     metadata = sa.MetaData()
     sites = sa.Table("sites", metadata, autoload_with=bind)

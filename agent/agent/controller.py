@@ -96,7 +96,9 @@ def parse_overlay_transport(data: dict) -> OverlayTransport:
 
 def parse_overlay_config(data: dict) -> OverlayConfig:
     return OverlayConfig(
-        transports=[parse_overlay_transport(item) for item in data.get("transports", [])],
+        transports=[
+            parse_overlay_transport(item) for item in data.get("transports", [])
+        ],
         peers=[parse_peer(item) for item in data.get("peers", [])],
         destination_policies=[
             DestinationPolicy(**item) for item in data.get("destination_policies", [])
@@ -174,11 +176,7 @@ class ControllerClient:
         The auth token is sent as a header rather than a query parameter to
         avoid it appearing in proxy access logs.
         """
-        ws_url = (
-            self._base
-            .replace("https://", "wss://")
-            .replace("http://", "ws://")
-        )
+        ws_url = self._base.replace("https://", "wss://").replace("http://", "ws://")
         ws_url += f"/api/v1/nodes/{node_id}/ws"
         return websockets.connect(
             ws_url,

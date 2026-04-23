@@ -27,7 +27,9 @@ async def record_event(
         severity=severity,
         node_id=node.id if node is not None else node_id,
         site_id=(node.site_id if node is not None else site_id),
-        transport_link_id=(transport_link.id if transport_link is not None else transport_link_id),
+        transport_link_id=(
+            transport_link.id if transport_link is not None else transport_link_id
+        ),
         transport_kind=transport_link.kind if transport_link is not None else None,
         title=title,
         message=message,
@@ -38,11 +40,11 @@ async def record_event(
     return event
 
 
-async def list_recent_events(session: AsyncSession, *, limit: int = 50) -> list[SiteEvent]:
+async def list_recent_events(
+    session: AsyncSession, *, limit: int = 50
+) -> list[SiteEvent]:
     result = await session.execute(
-        select(SiteEvent)
-        .order_by(SiteEvent.occurred_at.desc())
-        .limit(limit)
+        select(SiteEvent).order_by(SiteEvent.occurred_at.desc()).limit(limit)
     )
     return list(result.scalars().all())
 
@@ -97,7 +99,11 @@ async def record_bgp_state_transitions(
         if ctx is None:
             continue
         node, link = ctx
-        if current_state == "Established" and previous_state not in (None, "", "Established"):
+        if current_state == "Established" and previous_state not in (
+            None,
+            "",
+            "Established",
+        ):
             await record_event(
                 session,
                 kind=EventKind.BGP_SESSION_ESTABLISHED,

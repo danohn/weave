@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 PING_INTERVAL = 10  # seconds between keepalive pings
-PING_TIMEOUT  = 10  # seconds to wait for a pong before declaring the agent dead
+PING_TIMEOUT = 10  # seconds to wait for a pong before declaring the agent dead
 
 
 @router.websocket("/api/v1/nodes/{node_id}/ws")

@@ -7,7 +7,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 
-from app.core.config import controller_overlay_ip_for_kind, settings, transport_overlay_subnets
+from app.core.config import (
+    controller_overlay_ip_for_kind,
+    settings,
+    transport_overlay_subnets,
+)
 from app.core.security import issue_hashed_token, verify_token
 from app.db.models import (
     DeviceClaim,
@@ -45,7 +49,9 @@ async def _allocate_vpn_ip(session: AsyncSession) -> str:
     )
 
 
-async def _allocate_transport_overlay_ip(session: AsyncSession, kind: TransportKind) -> str:
+async def _allocate_transport_overlay_ip(
+    session: AsyncSession, kind: TransportKind
+) -> str:
     subnets = transport_overlay_subnets()
     subnet = subnets.get(kind.value, subnets["other"])
     network = ipaddress.ip_network(subnet, strict=False)
@@ -55,7 +61,9 @@ async def _allocate_transport_overlay_ip(session: AsyncSession, kind: TransportK
         for row in result.all()
         if row[0] and ipaddress.ip_address(row[0]) in network
     }
-    controller_ip = controller_overlay_ip_for_kind(kind.value if kind.value in subnets else "other")
+    controller_ip = controller_overlay_ip_for_kind(
+        kind.value if kind.value in subnets else "other"
+    )
     for host in network.hosts():
         ip_str = str(host)
         if ip_str == controller_ip:
@@ -111,7 +119,9 @@ async def _upsert_primary_site_prefix(
             await session.delete(existing)
         return None
     if existing is None:
-        created = SitePrefix(site_id=site.id, prefix=normalized, advertise=True, priority=100)
+        created = SitePrefix(
+            site_id=site.id, prefix=normalized, advertise=True, priority=100
+        )
         session.add(created)
         await session.flush()
         return created
@@ -180,9 +190,13 @@ async def _upsert_transport_link_report(
         kind = TransportKind(kind_raw) if kind_raw else TransportKind.INTERNET
     except ValueError:
         kind = TransportKind.OTHER
-    name = report.get("name") or ("wan1" if kind == TransportKind.INTERNET else kind.value)
+    name = report.get("name") or (
+        "wan1" if kind == TransportKind.INTERNET else kind.value
+    )
     result = await session.execute(
-        select(TransportLink).where(TransportLink.node_id == node.id, TransportLink.kind == kind)
+        select(TransportLink).where(
+            TransportLink.node_id == node.id, TransportLink.kind == kind
+        )
     )
     link = result.scalar_one_or_none()
     if link is None:
@@ -191,7 +205,8 @@ async def _upsert_transport_link_report(
             name=name,
             kind=kind,
             priority=_priority_for_kind(kind),
-            interface_name=report.get("interface_name") or _interface_name_for_kind(kind),
+            interface_name=report.get("interface_name")
+            or _interface_name_for_kind(kind),
             overlay_vpn_ip=await _allocate_transport_overlay_ip(session, kind),
             controller_vpn_ip=controller_overlay_ip_for_kind(kind.value),
             status=TransportStatus.UNKNOWN,
@@ -201,11 +216,19 @@ async def _upsert_transport_link_report(
         await session.flush()
 
     link.name = name
-    link.interface_name = report.get("interface_name") or link.interface_name or _interface_name_for_kind(kind)
+    link.interface_name = (
+        report.get("interface_name")
+        or link.interface_name
+        or _interface_name_for_kind(kind)
+    )
     link.endpoint_ip = report.get("endpoint_ip") or link.endpoint_ip or node.endpoint_ip
-    link.endpoint_port = report.get("endpoint_port") or link.endpoint_port or node.endpoint_port
+    link.endpoint_port = (
+        report.get("endpoint_port") or link.endpoint_port or node.endpoint_port
+    )
     link.reflected_endpoint_ip = reflected_endpoint_ip or link.reflected_endpoint_ip
-    link.wireguard_public_key = report.get("wireguard_public_key") or link.wireguard_public_key
+    link.wireguard_public_key = (
+        report.get("wireguard_public_key") or link.wireguard_public_key
+    )
     link.rtt_ms = report.get("rtt_ms")
     link.jitter_ms = report.get("jitter_ms")
     link.loss_pct = report.get("loss_pct")
@@ -227,8 +250,22 @@ def select_active_transport_links(links: list[TransportLink]) -> list[TransportL
         by_kind.setdefault(link.kind, []).append(link)
 
     ordered = sorted(
-        [max(group, key=lambda item: (item.status != TransportStatus.DOWN, -item.priority, item.created_at.timestamp() if item.created_at else 0)) for group in by_kind.values()],
-        key=lambda item: (item.status == TransportStatus.DOWN, item.priority, item.created_at or datetime.now(timezone.utc)),
+        [
+            max(
+                group,
+                key=lambda item: (
+                    item.status != TransportStatus.DOWN,
+                    -item.priority,
+                    item.created_at.timestamp() if item.created_at else 0,
+                ),
+            )
+            for group in by_kind.values()
+        ],
+        key=lambda item: (
+            item.status == TransportStatus.DOWN,
+            item.priority,
+            item.created_at or datetime.now(timezone.utc),
+        ),
     )
     for link in links:
         link.is_active = False
@@ -238,11 +275,7 @@ def select_active_transport_links(links: list[TransportLink]) -> list[TransportL
 
 
 def canonical_transport_link(links: list[TransportLink]) -> TransportLink | None:
-    links = [
-        link
-        for link in links
-        if link.overlay_vpn_ip
-    ]
+    links = [link for link in links if link.overlay_vpn_ip]
     if not links:
         return None
     internet_links = sorted(
@@ -251,7 +284,9 @@ def canonical_transport_link(links: list[TransportLink]) -> TransportLink | None
     )
     if internet_links:
         return internet_links[0]
-    links.sort(key=lambda item: (item.priority, item.created_at or datetime.now(timezone.utc)))
+    links.sort(
+        key=lambda item: (item.priority, item.created_at or datetime.now(timezone.utc))
+    )
     return links[0]
 
 
@@ -259,7 +294,11 @@ async def sync_node_compat_fields(session: AsyncSession, node: Node) -> Node:
     transport_link_result = await session.execute(
         select(TransportLink)
         .where(TransportLink.node_id == node.id)
-        .order_by(TransportLink.is_active.desc(), TransportLink.priority.asc(), TransportLink.created_at.asc())
+        .order_by(
+            TransportLink.is_active.desc(),
+            TransportLink.priority.asc(),
+            TransportLink.created_at.asc(),
+        )
     )
     transport_links = list(transport_link_result.scalars().all())
     active_link = transport_links[0] if transport_links else None
@@ -320,13 +359,19 @@ async def register_node(
         )
         candidates = list(candidate_result.scalars().all())
         claim_row = next(
-            (candidate for candidate in candidates if verify_token(claim_token, candidate.token_hash)),
+            (
+                candidate
+                for candidate in candidates
+                if verify_token(claim_token, candidate.token_hash)
+            ),
             None,
         )
         if claim_row is None:
             raise HTTPException(status_code=401, detail="Invalid claim token")
         if claim_row.status in {DeviceClaimStatus.CLAIMED, DeviceClaimStatus.ACTIVE}:
-            raise HTTPException(status_code=401, detail="Claim token has already been used")
+            raise HTTPException(
+                status_code=401, detail="Claim token has already been used"
+            )
         if claim_row.status == DeviceClaimStatus.REVOKED:
             raise HTTPException(status_code=401, detail="Claim token has been revoked")
         expires_at = claim_row.expires_at
@@ -335,15 +380,27 @@ async def register_node(
         if expires_at and expires_at <= datetime.now(timezone.utc):
             raise HTTPException(status_code=401, detail="Claim token has expired")
         if claim_row.expected_name and claim_row.expected_name != data.name:
-            raise HTTPException(status_code=409, detail="Node name does not match the device claim")
-        if claim_row.site_subnet and data.site_subnet and claim_row.site_subnet != data.site_subnet:
-            raise HTTPException(status_code=409, detail="Site subnet does not match the device claim")
+            raise HTTPException(
+                status_code=409, detail="Node name does not match the device claim"
+            )
+        if (
+            claim_row.site_subnet
+            and data.site_subnet
+            and claim_row.site_subnet != data.site_subnet
+        ):
+            raise HTTPException(
+                status_code=409, detail="Site subnet does not match the device claim"
+            )
     elif settings.REQUIRE_PREAUTH:
-        raise HTTPException(status_code=401, detail="A claim token is required to register")
+        raise HTTPException(
+            status_code=401, detail="A claim token is required to register"
+        )
 
     reflected_ip = request.client.host if request.client else None
     claim_id = claim_row.id if claim_row else None
-    claim_site_subnet = claim_row.site_subnet if claim_row and claim_row.site_subnet else None
+    claim_site_subnet = (
+        claim_row.site_subnet if claim_row and claim_row.site_subnet else None
+    )
     initial_status = NodeStatus.ACTIVE if claim_row else NodeStatus.PENDING
     site_name = _normalize_site_name(
         claim_row.site_name if claim_row else None,
@@ -377,7 +434,10 @@ async def register_node(
             await session.flush()
         except IntegrityError as exc:
             await session.rollback()
-            if _is_vpn_ip_unique_violation(exc) and attempt < MAX_VPN_IP_ALLOCATION_RETRIES:
+            if (
+                _is_vpn_ip_unique_violation(exc)
+                and attempt < MAX_VPN_IP_ALLOCATION_RETRIES
+            ):
                 continue
             raise
 
@@ -400,11 +460,15 @@ async def register_node(
         if claim_id:
             claim_row = await session.get(DeviceClaim, claim_id)
             if claim_row is None:
-                raise HTTPException(status_code=409, detail="Device claim no longer exists")
+                raise HTTPException(
+                    status_code=409, detail="Device claim no longer exists"
+                )
             claim_row.claimed_at = now
             claim_row.claimed_by_node_id = node.id
             claim_row.status = (
-                DeviceClaimStatus.ACTIVE if initial_status == NodeStatus.ACTIVE else DeviceClaimStatus.CLAIMED
+                DeviceClaimStatus.ACTIVE
+                if initial_status == NodeStatus.ACTIVE
+                else DeviceClaimStatus.CLAIMED
             )
 
         await event_service.record_event(
@@ -460,7 +524,9 @@ async def update_heartbeat(
                 await event_service.record_event(
                     session,
                     kind=EventKind.TRANSPORT_STATUS_CHANGED,
-                    severity=EventSeverity.WARN if link.status in {TransportStatus.DOWN, TransportStatus.DEGRADED} else EventSeverity.INFO,
+                    severity=EventSeverity.WARN
+                    if link.status in {TransportStatus.DOWN, TransportStatus.DEGRADED}
+                    else EventSeverity.INFO,
                     title="Transport state changed",
                     message=f"{node.name} {link.kind.value} changed from {previous['status'].value.lower()} to {link.status.value.lower()}",
                     node=node,
@@ -476,13 +542,22 @@ async def update_heartbeat(
                     node=node,
                     transport_link=link,
                 )
-        previous_active = next((kind for kind, state in prior_transport_state.items() if state["is_active"]), None)
+        previous_active = next(
+            (
+                kind
+                for kind, state in prior_transport_state.items()
+                if state["is_active"]
+            ),
+            None,
+        )
         next_active = selected[0].kind if selected else None
         if previous_active != next_active and next_active is not None:
             await event_service.record_event(
                 session,
                 kind=EventKind.TRANSPORT_FAILOVER,
-                severity=EventSeverity.WARN if previous_active is not None else EventSeverity.INFO,
+                severity=EventSeverity.WARN
+                if previous_active is not None
+                else EventSeverity.INFO,
                 title="Active transport changed",
                 message=f"{node.name} active path moved from {previous_active.value if previous_active is not None else 'none'} to {next_active.value}",
                 node=node,
@@ -494,7 +569,10 @@ async def update_heartbeat(
                 if not policy.enabled or not policy_applies_to_node(policy, node):
                     continue
                 resolved = resolve_policy_for_node(node, policy)
-                if resolved["resolution"] == "fallback" and resolved["selected"] is not None:
+                if (
+                    resolved["resolution"] == "fallback"
+                    and resolved["selected"] is not None
+                ):
                     await event_service.record_event(
                         session,
                         kind=EventKind.POLICY_FALLBACK_ACTIVE,
@@ -539,7 +617,9 @@ def _transport_status_from_metrics(
     return TransportStatus.UNKNOWN
 
 
-async def expire_stale_nodes(session: AsyncSession, threshold_seconds: int) -> list[Node]:
+async def expire_stale_nodes(
+    session: AsyncSession, threshold_seconds: int
+) -> list[Node]:
     """Set ACTIVE nodes to OFFLINE when last_seen is older than threshold_seconds.
 
     Returns the list of nodes transitioned so callers can clean up data-plane state.
@@ -653,7 +733,9 @@ async def delete_node(node_id: str, session: AsyncSession) -> None:
     await session.commit()
 
 
-async def update_node(node_id: str, data: NodeUpdateRequest, session: AsyncSession) -> Node:
+async def update_node(
+    node_id: str, data: NodeUpdateRequest, session: AsyncSession
+) -> Node:
     node = await get_node_by_id(session, node_id)
     if not node:
         raise HTTPException(status_code=404, detail="Node not found")
@@ -668,7 +750,9 @@ async def update_node(node_id: str, data: NodeUpdateRequest, session: AsyncSessi
     if node.site is None and node.site_id:
         node.site = await session.get(Site, node.site_id)
     if node.site is not None:
-        await _upsert_primary_site_prefix(session, site=node.site, prefix=data.site_subnet)
+        await _upsert_primary_site_prefix(
+            session, site=node.site, prefix=data.site_subnet
+        )
     await sync_node_compat_fields(session, node)
     await session.commit()
     return await get_node_by_id(session, node_id)

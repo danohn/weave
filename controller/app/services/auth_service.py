@@ -40,7 +40,9 @@ async def list_claims(session: AsyncSession) -> list[DeviceClaim]:
 
 
 async def revoke_claim(claim_id: str, session: AsyncSession) -> DeviceClaim:
-    result = await session.execute(select(DeviceClaim).where(DeviceClaim.id == claim_id))
+    result = await session.execute(
+        select(DeviceClaim).where(DeviceClaim.id == claim_id)
+    )
     claim = result.scalar_one_or_none()
     if not claim:
         raise HTTPException(status_code=404, detail="Claim not found")
@@ -53,11 +55,15 @@ async def revoke_claim(claim_id: str, session: AsyncSession) -> DeviceClaim:
 
 
 async def delete_claim(claim_id: str, session: AsyncSession) -> None:
-    result = await session.execute(select(DeviceClaim).where(DeviceClaim.id == claim_id))
+    result = await session.execute(
+        select(DeviceClaim).where(DeviceClaim.id == claim_id)
+    )
     claim = result.scalar_one_or_none()
     if not claim:
         raise HTTPException(status_code=404, detail="Claim not found")
     if claim.claimed_at is not None:
-        raise HTTPException(status_code=400, detail="Cannot delete a claim that has already been used")
+        raise HTTPException(
+            status_code=400, detail="Cannot delete a claim that has already been used"
+        )
     await session.delete(claim)
     await session.commit()

@@ -4,6 +4,7 @@ Revision ID: 0005
 Revises: 0004
 Create Date: 2026-04-17
 """
+
 import sqlalchemy as sa
 from argon2 import PasswordHasher
 from alembic import op
@@ -29,9 +30,13 @@ def _index_names(table_name: str) -> set[str]:
 def upgrade() -> None:
     columns = _column_names("preauth_tokens")
     if "token_hash" not in columns:
-        op.add_column("preauth_tokens", sa.Column("token_hash", sa.String(), nullable=True))
+        op.add_column(
+            "preauth_tokens", sa.Column("token_hash", sa.String(), nullable=True)
+        )
     if "token_prefix" not in columns:
-        op.add_column("preauth_tokens", sa.Column("token_prefix", sa.String(), nullable=True))
+        op.add_column(
+            "preauth_tokens", sa.Column("token_prefix", sa.String(), nullable=True)
+        )
 
     conn = op.get_bind()
     if "token" in _column_names("preauth_tokens"):

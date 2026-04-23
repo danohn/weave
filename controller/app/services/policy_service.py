@@ -7,12 +7,13 @@ from app.schemas.node import (
     DestinationPolicyCreateRequest,
     DestinationPolicyUpdateRequest,
 )
-from app.services.policy_resolver import policy_applies_to_node, resolve_policy_for_node
 
 
 async def list_policies(session: AsyncSession) -> list[DestinationPolicy]:
     result = await session.execute(
-        select(DestinationPolicy).order_by(DestinationPolicy.priority.asc(), DestinationPolicy.created_at.asc())
+        select(DestinationPolicy).order_by(
+            DestinationPolicy.priority.asc(), DestinationPolicy.created_at.asc()
+        )
     )
     return list(result.scalars().all())
 
@@ -21,7 +22,10 @@ async def create_policy(
     session: AsyncSession, data: DestinationPolicyCreateRequest
 ) -> DestinationPolicy:
     if data.site_id and data.node_id:
-        raise HTTPException(status_code=400, detail="Policy scope must target either a site or a node, not both")
+        raise HTTPException(
+            status_code=400,
+            detail="Policy scope must target either a site or a node, not both",
+        )
     existing = await session.execute(
         select(DestinationPolicy).where(DestinationPolicy.name == data.name)
     )
@@ -44,7 +48,10 @@ async def update_policy(
     next_site_id = changes.get("site_id", policy.site_id)
     next_node_id = changes.get("node_id", policy.node_id)
     if next_site_id and next_node_id:
-        raise HTTPException(status_code=400, detail="Policy scope must target either a site or a node, not both")
+        raise HTTPException(
+            status_code=400,
+            detail="Policy scope must target either a site or a node, not both",
+        )
     for key, value in changes.items():
         setattr(policy, key, value)
     await session.commit()

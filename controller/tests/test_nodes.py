@@ -1,5 +1,5 @@
 """Tests for node registration, heartbeat, and admin management."""
-import pytest
+
 from httpx import AsyncClient
 
 ADMIN_TOKEN = "test-admin-token"

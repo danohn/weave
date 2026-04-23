@@ -28,12 +28,21 @@ Run the controller:
 
 ```bash
 cd controller
-uv sync
+uv sync --group dev
 SESSION_SECRET=dev OIDC_ISSUER=... uv run uvicorn app.main:app --reload
 # API at http://localhost:8000, docs at http://localhost:8000/docs
 ```
 
 `SESSION_COOKIE_SECURE` defaults to `false` in local HTTP dev and `true` when `WEAVE_DOMAIN` is set. Override it explicitly if your setup needs different cookie behavior.
+
+Install the repo hooks:
+
+```bash
+cd controller
+uv sync --group dev
+cd ..
+./controller/.venv/bin/pre-commit install
+```
 
 Run the frontend dev server:
 
@@ -130,7 +139,14 @@ To use PostgreSQL: set `DATABASE_URL=postgresql+asyncpg://user:pass@host:5432/db
 
 ```bash
 cd controller
-uv run pytest -v
+uv sync --group dev
+./.venv/bin/pytest -v
+```
+
+Run lint and formatting checks:
+
+```bash
+./.venv/bin/pre-commit run --all-files
 ```
 
 ## Installing an edge node

@@ -24,7 +24,8 @@ def get_public_key() -> str:
 
 async def _wg(*args: str) -> None:
     proc = await asyncio.create_subprocess_exec(
-        "wg", *args,
+        "wg",
+        *args,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
@@ -41,11 +42,16 @@ async def add_peer(node: Node) -> None:
         allowed_ips += f",{node.site_subnet}"
     try:
         await _wg(
-            "set", settings.WG_INTERFACE,
-            "peer", node.wireguard_public_key,
-            "allowed-ips", allowed_ips,
-            "endpoint", f"{endpoint}:{node.endpoint_port}",
-            "persistent-keepalive", "25",
+            "set",
+            settings.WG_INTERFACE,
+            "peer",
+            node.wireguard_public_key,
+            "allowed-ips",
+            allowed_ips,
+            "endpoint",
+            f"{endpoint}:{node.endpoint_port}",
+            "persistent-keepalive",
+            "25",
         )
         logger.info("WG: added peer %s (%s)", node.name, node.vpn_ip)
     except Exception as exc:
@@ -60,7 +66,12 @@ async def add_transport_peer(
 ) -> None:
     """Add or update a node transport link as a WireGuard peer on the controller."""
     endpoint = link.endpoint_ip or link.reflected_endpoint_ip
-    if not endpoint or not link.endpoint_port or not link.wireguard_public_key or not link.overlay_vpn_ip:
+    if (
+        not endpoint
+        or not link.endpoint_port
+        or not link.wireguard_public_key
+        or not link.overlay_vpn_ip
+    ):
         logger.warning(
             "WG: skipping peer %s/%s due to incomplete transport config",
             node_name,
@@ -83,17 +94,23 @@ async def add_transport_peer(
             "persistent-keepalive",
             "25",
         )
-        logger.info("WG: added peer %s/%s (%s)", node_name, link.kind.value, link.overlay_vpn_ip)
+        logger.info(
+            "WG: added peer %s/%s (%s)", node_name, link.kind.value, link.overlay_vpn_ip
+        )
     except Exception as exc:
-        logger.warning("WG: could not add peer %s/%s: %s", node_name, link.kind.value, exc)
+        logger.warning(
+            "WG: could not add peer %s/%s: %s", node_name, link.kind.value, exc
+        )
 
 
 async def remove_peer(node: Node) -> None:
     """Remove a node's WireGuard peer from the controller's wg0."""
     try:
         await _wg(
-            "set", settings.WG_INTERFACE,
-            "peer", node.wireguard_public_key,
+            "set",
+            settings.WG_INTERFACE,
+            "peer",
+            node.wireguard_public_key,
             "remove",
         )
         logger.info("WG: removed peer %s (%s)", node.name, node.vpn_ip)
@@ -113,20 +130,33 @@ async def remove_transport_peer(link: TransportLink, *, node_name: str) -> None:
             link.wireguard_public_key,
             "remove",
         )
-        logger.info("WG: removed peer %s/%s (%s)", node_name, link.kind.value, link.overlay_vpn_ip)
+        logger.info(
+            "WG: removed peer %s/%s (%s)",
+            node_name,
+            link.kind.value,
+            link.overlay_vpn_ip,
+        )
     except Exception as exc:
-        logger.warning("WG: could not remove peer %s/%s: %s", node_name, link.kind.value, exc)
+        logger.warning(
+            "WG: could not remove peer %s/%s: %s", node_name, link.kind.value, exc
+        )
 
 
 async def sync_peers(nodes: list[Node]) -> None:
     """Add all given nodes as WireGuard peers (used at startup to restore state)."""
     for node in nodes:
         links = sorted(
-            [link for link in getattr(node, "transport_links", []) if link.wireguard_public_key and link.overlay_vpn_ip],
+            [
+                link
+                for link in getattr(node, "transport_links", [])
+                if link.wireguard_public_key and link.overlay_vpn_ip
+            ],
             key=lambda item: (item.priority, item.kind.value),
         )
         if links:
             for link in links:
-                await add_transport_peer(link, node_name=node.name, site_subnet=node.site_subnet)
+                await add_transport_peer(
+                    link, node_name=node.name, site_subnet=node.site_subnet
+                )
         else:
             await add_peer(node)

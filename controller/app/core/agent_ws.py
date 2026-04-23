@@ -23,7 +23,9 @@ class AgentConnectionManager:
 
     def disconnect(self, node_id: str) -> None:
         self._connections.pop(node_id, None)
-        logger.debug("Agent %s disconnected (%d remaining)", node_id, len(self._connections))
+        logger.debug(
+            "Agent %s disconnected (%d remaining)", node_id, len(self._connections)
+        )
 
     async def send_peers(self, node_id: str, session: AsyncSession) -> None:
         """Send the current peer list to a single connected agent."""
@@ -45,7 +47,11 @@ class AgentConnectionManager:
             await ws.send_json(payload)
         except Exception as exc:
             # WS is already closed — clean up the stale entry silently
-            logger.debug("Peer push to agent %s failed (%s); removing stale connection", node_id, exc)
+            logger.debug(
+                "Peer push to agent %s failed (%s); removing stale connection",
+                node_id,
+                exc,
+            )
             self.disconnect(node_id)
 
     async def broadcast_peers(self, session: AsyncSession) -> None:

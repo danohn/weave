@@ -5,6 +5,7 @@ Revises: 0009
 Create Date: 2026-04-23 00:30:00.000000
 
 """
+
 import ipaddress
 from typing import Sequence, Union
 
@@ -46,11 +47,15 @@ def upgrade() -> None:
     indexes = _index_names("transport_links")
     with op.batch_alter_table("transport_links") as batch_op:
         if "wireguard_public_key" not in columns:
-            batch_op.add_column(sa.Column("wireguard_public_key", sa.String(), nullable=True))
+            batch_op.add_column(
+                sa.Column("wireguard_public_key", sa.String(), nullable=True)
+            )
         if "overlay_vpn_ip" not in columns:
             batch_op.add_column(sa.Column("overlay_vpn_ip", sa.String(), nullable=True))
         if "controller_vpn_ip" not in columns:
-            batch_op.add_column(sa.Column("controller_vpn_ip", sa.String(), nullable=True))
+            batch_op.add_column(
+                sa.Column("controller_vpn_ip", sa.String(), nullable=True)
+            )
 
     if "ix_transport_links_wireguard_public_key" not in indexes:
         op.create_index(
@@ -82,7 +87,9 @@ def upgrade() -> None:
             transport_links.c.wireguard_public_key,
             nodes.c.vpn_ip,
             nodes.c.wireguard_public_key.label("node_wg_key"),
-        ).select_from(transport_links.join(nodes, transport_links.c.node_id == nodes.c.id))
+        ).select_from(
+            transport_links.join(nodes, transport_links.c.node_id == nodes.c.id)
+        )
     ).fetchall()
 
     for row in rows:
@@ -91,12 +98,16 @@ def upgrade() -> None:
         if row.overlay_vpn_ip is None:
             updates["overlay_vpn_ip"] = row.vpn_ip
         if row.controller_vpn_ip is None:
-            updates["controller_vpn_ip"] = _controller_ip(kind if kind in _DEFAULT_TRANSPORT_SUBNETS else "other")
+            updates["controller_vpn_ip"] = _controller_ip(
+                kind if kind in _DEFAULT_TRANSPORT_SUBNETS else "other"
+            )
         if row.wireguard_public_key is None:
             updates["wireguard_public_key"] = row.node_wg_key
         if updates:
             bind.execute(
-                transport_links.update().where(transport_links.c.id == row.id).values(**updates)
+                transport_links.update()
+                .where(transport_links.c.id == row.id)
+                .values(**updates)
             )
 
 
@@ -104,7 +115,9 @@ def downgrade() -> None:
     if "ix_transport_links_overlay_vpn_ip" in _index_names("transport_links"):
         op.drop_index("ix_transport_links_overlay_vpn_ip", table_name="transport_links")
     if "ix_transport_links_wireguard_public_key" in _index_names("transport_links"):
-        op.drop_index("ix_transport_links_wireguard_public_key", table_name="transport_links")
+        op.drop_index(
+            "ix_transport_links_wireguard_public_key", table_name="transport_links"
+        )
 
     with op.batch_alter_table("transport_links") as batch_op:
         if "controller_vpn_ip" in _column_names("transport_links"):

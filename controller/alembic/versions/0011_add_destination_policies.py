@@ -34,14 +34,34 @@ def upgrade() -> None:
         ),
         sa.Column("priority", sa.Integer(), nullable=False, server_default="100"),
         sa.Column("enabled", sa.Boolean(), nullable=False, server_default=sa.true()),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.func.now(),
+        ),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index(op.f("ix_destination_policies_name"), "destination_policies", ["name"], unique=True)
-    op.create_index(op.f("ix_destination_policies_destination_prefix"), "destination_policies", ["destination_prefix"], unique=False)
+    op.create_index(
+        op.f("ix_destination_policies_name"),
+        "destination_policies",
+        ["name"],
+        unique=True,
+    )
+    op.create_index(
+        op.f("ix_destination_policies_destination_prefix"),
+        "destination_policies",
+        ["destination_prefix"],
+        unique=False,
+    )
 
 
 def downgrade() -> None:
-    op.drop_index(op.f("ix_destination_policies_destination_prefix"), table_name="destination_policies")
-    op.drop_index(op.f("ix_destination_policies_name"), table_name="destination_policies")
+    op.drop_index(
+        op.f("ix_destination_policies_destination_prefix"),
+        table_name="destination_policies",
+    )
+    op.drop_index(
+        op.f("ix_destination_policies_name"), table_name="destination_policies"
+    )
     op.drop_table("destination_policies")

@@ -3,7 +3,13 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.db.models import EventKind, EventSeverity, NodeStatus, TransportKind, TransportStatus
+from app.db.models import (
+    EventKind,
+    EventSeverity,
+    NodeStatus,
+    TransportKind,
+    TransportStatus,
+)
 from app.services.policy_resolver import policy_applies_to_node, resolve_policy_for_node
 
 
@@ -84,11 +90,11 @@ class NodeRegisterRequest(BaseModel):
     wireguard_public_key: str
     endpoint_ip: Optional[str] = None
     endpoint_port: int
-    site_subnet: Optional[str] = None   # e.g. "192.168.1.0/24" — LAN behind this node
+    site_subnet: Optional[str] = None  # e.g. "192.168.1.0/24" — LAN behind this node
     # endpoint_ip is derived from request.client.host by the controller
     # vpn_ip is auto-assigned by the controller from VPN_SUBNET
     claim_token: Optional[str] = None
-    preauth_token: Optional[str] = None   # deprecated alias for claim_token
+    preauth_token: Optional[str] = None  # deprecated alias for claim_token
 
 
 class NodeRegisterResponse(BaseModel):
@@ -115,7 +121,7 @@ class PeerResponse(BaseModel):
     preferred_endpoint: str
     endpoint_port: int
     nat_detected: bool
-    site_subnet: Optional[str] = None   # LAN subnet to add to WireGuard AllowedIPs
+    site_subnet: Optional[str] = None  # LAN subnet to add to WireGuard AllowedIPs
     site_id: Optional[str] = None
     site_name: Optional[str] = None
     transport_link_id: Optional[str] = None
@@ -158,7 +164,7 @@ class OverlayConfigResponse(BaseModel):
 
 
 class NodeUpdateRequest(BaseModel):
-    site_subnet: Optional[str] = None   # pass null/None to clear
+    site_subnet: Optional[str] = None  # pass null/None to clear
     site_name: Optional[str] = None
 
 
@@ -208,7 +214,9 @@ class NodeAdminResponse(BaseModel):
     health: str = "Healthy"
     exceptions: list[str] = Field(default_factory=list)
     recent_events: list[SiteEventResponse] = Field(default_factory=list)
-    policy_summary: SitePolicySummaryResponse = Field(default_factory=SitePolicySummaryResponse)
+    policy_summary: SitePolicySummaryResponse = Field(
+        default_factory=SitePolicySummaryResponse
+    )
 
 
 def _canonical_transport_link(node):
@@ -232,7 +240,9 @@ def _canonical_transport_link(node):
     return links[0]
 
 
-def _build_policy_summary(node, policies) -> tuple[SitePolicySummaryResponse, list[str]]:
+def _build_policy_summary(
+    node, policies
+) -> tuple[SitePolicySummaryResponse, list[str]]:
     summary = SitePolicySummaryResponse()
     exceptions: list[str] = []
     applicable = [policy for policy in policies if policy_applies_to_node(policy, node)]
@@ -254,7 +264,9 @@ def _build_policy_summary(node, policies) -> tuple[SitePolicySummaryResponse, li
     return summary, exceptions
 
 
-def _derive_health(node, active_transport, transport_links, bgp, policy_exceptions: list[str]) -> tuple[str, list[str]]:
+def _derive_health(
+    node, active_transport, transport_links, bgp, policy_exceptions: list[str]
+) -> tuple[str, list[str]]:
     exceptions: list[str] = []
     if node.status == NodeStatus.REVOKED:
         return "Down", ["Node is revoked"]
@@ -262,24 +274,38 @@ def _derive_health(node, active_transport, transport_links, bgp, policy_exceptio
         exceptions.append(f"Node status is {node.status.value.lower()}")
     if not transport_links:
         exceptions.append("No transport links reported")
-    down_links = [link for link in transport_links if link.status == TransportStatus.DOWN]
-    degraded_links = [link for link in transport_links if link.status == TransportStatus.DEGRADED]
-    unmeasured_links = [link for link in transport_links if link.status == TransportStatus.UNKNOWN]
+    down_links = [
+        link for link in transport_links if link.status == TransportStatus.DOWN
+    ]
+    degraded_links = [
+        link for link in transport_links if link.status == TransportStatus.DEGRADED
+    ]
+    unmeasured_links = [
+        link for link in transport_links if link.status == TransportStatus.UNKNOWN
+    ]
     if down_links:
-        exceptions.append(f"{len(down_links)} transport link{'s' if len(down_links) != 1 else ''} down")
+        exceptions.append(
+            f"{len(down_links)} transport link{'s' if len(down_links) != 1 else ''} down"
+        )
     if degraded_links:
-        exceptions.append(f"{len(degraded_links)} transport link{'s' if len(degraded_links) != 1 else ''} degraded")
+        exceptions.append(
+            f"{len(degraded_links)} transport link{'s' if len(degraded_links) != 1 else ''} degraded"
+        )
     if active_transport is not None and active_transport.overlay_vpn_ip:
         bgp_info = bgp.get(active_transport.overlay_vpn_ip)
         if bgp_info is None:
             exceptions.append("No routing session reported for active transport")
         elif bgp_info.get("state") != "Established":
-            exceptions.append(f"Active transport BGP is {bgp_info.get('state', 'unknown').lower()}")
+            exceptions.append(
+                f"Active transport BGP is {bgp_info.get('state', 'unknown').lower()}"
+            )
         bfd_status = bgp_info.get("bfd_status") if bgp_info else None
         if bfd_status and bfd_status not in {"Up", "OK"}:
             exceptions.append(f"Active transport BFD is {bfd_status.lower()}")
     if unmeasured_links and not down_links and not degraded_links:
-        exceptions.append(f"{len(unmeasured_links)} transport link{'s' if len(unmeasured_links) != 1 else ''} unmeasured")
+        exceptions.append(
+            f"{len(unmeasured_links)} transport link{'s' if len(unmeasured_links) != 1 else ''} unmeasured"
+        )
     exceptions.extend(policy_exceptions)
 
     if node.status == NodeStatus.REVOKED:
@@ -290,16 +316,26 @@ def _derive_health(node, active_transport, transport_links, bgp, policy_exceptio
         health = "Down"
     elif any("no available transport" in item for item in policy_exceptions):
         health = "Degraded"
-    elif any(link.status == TransportStatus.DOWN for link in transport_links) or any(link.status == TransportStatus.DEGRADED for link in transport_links):
+    elif any(link.status == TransportStatus.DOWN for link in transport_links) or any(
+        link.status == TransportStatus.DEGRADED for link in transport_links
+    ):
         health = "Degraded"
-    elif active_transport.overlay_vpn_ip and bgp.get(active_transport.overlay_vpn_ip, {}).get("state") not in {None, "Established"}:
+    elif active_transport.overlay_vpn_ip and bgp.get(
+        active_transport.overlay_vpn_ip, {}
+    ).get("state") not in {None, "Established"}:
         health = "Degraded"
     else:
         health = "Healthy"
     return health, exceptions
 
 
-def build_node_admin_response(node, *, bgp: Optional[dict] = None, policies: Optional[list] = None, events: Optional[list] = None) -> NodeAdminResponse:
+def build_node_admin_response(
+    node,
+    *,
+    bgp: Optional[dict] = None,
+    policies: Optional[list] = None,
+    events: Optional[list] = None,
+) -> NodeAdminResponse:
     bgp = bgp or {}
     policies = policies or []
     events = events or []
@@ -313,7 +349,9 @@ def build_node_admin_response(node, *, bgp: Optional[dict] = None, policies: Opt
                 advertise=prefix.advertise,
                 priority=prefix.priority,
             )
-            for prefix in sorted(site_obj.prefixes, key=lambda item: (item.priority, item.created_at))
+            for prefix in sorted(
+                site_obj.prefixes, key=lambda item: (item.priority, item.created_at)
+            )
         ]
         site = SiteSummaryResponse(
             id=site_obj.id,
@@ -350,7 +388,9 @@ def build_node_admin_response(node, *, bgp: Optional[dict] = None, policies: Opt
     active_transport = next((link for link in transport_links if link.is_active), None)
     canonical_transport = _canonical_transport_link(node)
     policy_summary, policy_exceptions = _build_policy_summary(node, policies)
-    health, exceptions = _derive_health(node, active_transport, transport_links, bgp, policy_exceptions)
+    health, exceptions = _derive_health(
+        node, active_transport, transport_links, bgp, policy_exceptions
+    )
     recent_events = [
         SiteEventResponse(
             id=event.id,
@@ -372,15 +412,21 @@ def build_node_admin_response(node, *, bgp: Optional[dict] = None, policies: Opt
         endpoint_port=node.endpoint_port,
         reflected_endpoint_ip=node.reflected_endpoint_ip,
         reflected_endpoint_port=node.reflected_endpoint_port,
-        vpn_ip=canonical_transport.overlay_vpn_ip if canonical_transport is not None else node.vpn_ip,
+        vpn_ip=canonical_transport.overlay_vpn_ip
+        if canonical_transport is not None
+        else node.vpn_ip,
         site_subnet=node.site_subnet,
         device_claim_id=node.device_claim_id,
         status=node.status,
         last_seen=node.last_seen,
         created_at=node.created_at,
         site=site,
-        active_overlay_vpn_ip=active_transport.overlay_vpn_ip if active_transport is not None else None,
-        active_overlay_interface=active_transport.interface_name if active_transport is not None else None,
+        active_overlay_vpn_ip=active_transport.overlay_vpn_ip
+        if active_transport is not None
+        else None,
+        active_overlay_interface=active_transport.interface_name
+        if active_transport is not None
+        else None,
         active_transport=active_transport,
         transport_links=transport_links,
         health=health,

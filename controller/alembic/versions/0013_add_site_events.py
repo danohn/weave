@@ -52,7 +52,12 @@ def upgrade() -> None:
         ),
         sa.Column("title", sa.String(), nullable=False),
         sa.Column("message", sa.String(), nullable=False),
-        sa.Column("occurred_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+        sa.Column(
+            "occurred_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.func.now(),
+        ),
         sa.ForeignKeyConstraint(["node_id"], ["nodes.id"]),
         sa.ForeignKeyConstraint(["site_id"], ["sites.id"]),
         sa.ForeignKeyConstraint(["transport_link_id"], ["transport_links.id"]),
@@ -61,8 +66,15 @@ def upgrade() -> None:
     op.create_index("ix_site_events_kind", "site_events", ["kind"], unique=False)
     op.create_index("ix_site_events_node_id", "site_events", ["node_id"], unique=False)
     op.create_index("ix_site_events_site_id", "site_events", ["site_id"], unique=False)
-    op.create_index("ix_site_events_transport_link_id", "site_events", ["transport_link_id"], unique=False)
-    op.create_index("ix_site_events_occurred_at", "site_events", ["occurred_at"], unique=False)
+    op.create_index(
+        "ix_site_events_transport_link_id",
+        "site_events",
+        ["transport_link_id"],
+        unique=False,
+    )
+    op.create_index(
+        "ix_site_events_occurred_at", "site_events", ["occurred_at"], unique=False
+    )
 
 
 def downgrade() -> None:

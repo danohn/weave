@@ -1,5 +1,5 @@
 """Tests for peer list distribution and NAT traversal logic."""
-import pytest
+
 from httpx import AsyncClient
 
 ADMIN_TOKEN = "test-admin-token"

@@ -8,7 +8,6 @@ from app.core.websocket import broadcast_state
 from app.db.base import get_session
 from app.db.models import Node, NodeStatus
 from app.schemas.node import (
-    SiteEventResponse,
     build_node_admin_response,
     HeartbeatRequest,
     HeartbeatResponse,
@@ -19,7 +18,14 @@ from app.schemas.node import (
     NodeUpdateRequest,
     OverlayConfigResponse,
 )
-from app.services import event_service, frr_service, node_service, peer_service, policy_service, wireguard_service
+from app.services import (
+    event_service,
+    frr_service,
+    node_service,
+    peer_service,
+    policy_service,
+    wireguard_service,
+)
 
 router = APIRouter(prefix="/api/v1/nodes", tags=["nodes"])
 
@@ -27,16 +33,26 @@ router = APIRouter(prefix="/api/v1/nodes", tags=["nodes"])
 async def _build_admin_response(session: AsyncSession, node: Node) -> NodeAdminResponse:
     bgp = await frr_service.get_bgp_status()
     policies = await policy_service.list_policies(session)
-    event_map = await event_service.list_recent_events_by_node(session, node_ids=[node.id])
-    return build_node_admin_response(node, bgp=bgp, policies=policies, events=event_map.get(node.id, []))
+    event_map = await event_service.list_recent_events_by_node(
+        session, node_ids=[node.id]
+    )
+    return build_node_admin_response(
+        node, bgp=bgp, policies=policies, events=event_map.get(node.id, [])
+    )
 
 
-async def _build_admin_responses(session: AsyncSession, nodes: list[Node]) -> list[NodeAdminResponse]:
+async def _build_admin_responses(
+    session: AsyncSession, nodes: list[Node]
+) -> list[NodeAdminResponse]:
     bgp = await frr_service.get_bgp_status()
     policies = await policy_service.list_policies(session)
-    event_map = await event_service.list_recent_events_by_node(session, node_ids=[node.id for node in nodes])
+    event_map = await event_service.list_recent_events_by_node(
+        session, node_ids=[node.id for node in nodes]
+    )
     return [
-        build_node_admin_response(node, bgp=bgp, policies=policies, events=event_map.get(node.id, []))
+        build_node_admin_response(
+            node, bgp=bgp, policies=policies, events=event_map.get(node.id, [])
+        )
         for node in nodes
     ]
 
@@ -61,14 +77,20 @@ def _transport_signature(node: Node) -> tuple[tuple[str | None, ...], ...]:
 async def _on_node_activated(node: Node) -> None:
     """Add the node to the controller's WireGuard, BFD, and BGP config."""
     links = sorted(
-        [link for link in getattr(node, "transport_links", []) if link.wireguard_public_key and link.overlay_vpn_ip],
+        [
+            link
+            for link in getattr(node, "transport_links", [])
+            if link.wireguard_public_key and link.overlay_vpn_ip
+        ],
         key=lambda item: (item.priority, item.kind.value),
     )
     if not links:
         await wireguard_service.add_peer(node)
         return
     for link in links:
-        await wireguard_service.add_transport_peer(link, node_name=node.name, site_subnet=node.site_subnet)
+        await wireguard_service.add_transport_peer(
+            link, node_name=node.name, site_subnet=node.site_subnet
+        )
         await frr_service.add_bfd_peer(link, node.name)
         await frr_service.add_neighbor(link, node.name)
 
@@ -76,7 +98,11 @@ async def _on_node_activated(node: Node) -> None:
 async def _on_node_removed(node: Node) -> None:
     """Remove the node from the controller's WireGuard, BFD, and BGP config."""
     links = sorted(
-        [link for link in getattr(node, "transport_links", []) if link.wireguard_public_key and link.overlay_vpn_ip],
+        [
+            link
+            for link in getattr(node, "transport_links", [])
+            if link.wireguard_public_key and link.overlay_vpn_ip
+        ],
         key=lambda item: (item.priority, item.kind.value),
     )
     if not links:
@@ -126,7 +152,10 @@ async def heartbeat(
         current_node,
         request,
         session,
-        transport_links=[item.model_dump(mode="json") for item in (data.transport_links if data else [])],
+        transport_links=[
+            item.model_dump(mode="json")
+            for item in (data.transport_links if data else [])
+        ],
     )
     await broadcast_state(session)
     await broadcast_peers(session)
@@ -254,6 +283,7 @@ async def delete(
 ) -> None:
     # Fetch node before deletion so we have its WG key and VPN IP
     from sqlalchemy import select
+
     result = await session.execute(select(Node).where(Node.id == node_id))
     node = result.scalar_one_or_none()
     if node:

@@ -27,9 +27,12 @@ def _run(cmd: list[str], input: str | None = None) -> str:
 
 
 def _interface_exists(interface: str) -> bool:
-    return subprocess.run(
-        ["ip", "link", "show", interface], capture_output=True
-    ).returncode == 0
+    return (
+        subprocess.run(
+            ["ip", "link", "show", interface], capture_output=True
+        ).returncode
+        == 0
+    )
 
 
 def _ip(*args: str) -> str:
@@ -82,9 +85,17 @@ def setup_interface(
     else:
         logger.info("Interface %s already exists — reconfiguring", interface)
 
-    _run(["wg", "set", interface,
-          "private-key", private_key_file,
-          "listen-port", str(listen_port)])
+    _run(
+        [
+            "wg",
+            "set",
+            interface,
+            "private-key",
+            private_key_file,
+            "listen-port",
+            str(listen_port),
+        ]
+    )
     _run(["ip", "link", "set", interface, "up"])
     logger.info("Interface %s configured (port %d)", interface, listen_port)
 
@@ -117,7 +128,17 @@ def sync_underlay_routes(
     table = _route_table_for_transport(transport_kind)
     if source_ip:
         subnet = ".".join(source_ip.split(".")[:3]) + ".0/24"
-        _ip("route", "replace", subnet, "dev", bind_interface, "src", source_ip, "table", table)
+        _ip(
+            "route",
+            "replace",
+            subnet,
+            "dev",
+            bind_interface,
+            "src",
+            source_ip,
+            "table",
+            table,
+        )
         if gateway:
             _ip(
                 "route",
@@ -133,7 +154,17 @@ def sync_underlay_routes(
                 table,
             )
         else:
-            _ip("route", "replace", "default", "dev", bind_interface, "src", source_ip, "table", table)
+            _ip(
+                "route",
+                "replace",
+                "default",
+                "dev",
+                bind_interface,
+                "src",
+                source_ip,
+                "table",
+                table,
+            )
         rule_priority = {
             "internet": "9001",
             "mpls": "9002",
@@ -141,7 +172,16 @@ def sync_underlay_routes(
             "other": "9004",
         }.get(transport_kind or "other", "9004")
         _best_effort(["ip", "rule", "del", "priority", rule_priority])
-        _ip("rule", "add", "from", f"{source_ip}/32", "lookup", table, "priority", rule_priority)
+        _ip(
+            "rule",
+            "add",
+            "from",
+            f"{source_ip}/32",
+            "lookup",
+            table,
+            "priority",
+            rule_priority,
+        )
 
     endpoints: set[str] = set()
     for peer in peers:
@@ -190,7 +230,11 @@ def sync_destination_policy_routes(
     current_rules: dict[str, tuple[str, str]] = {}
     for index, policy in enumerate(policies):
         rule_priority = str(10000 + index)
-        if not policy.enabled or not policy.selected_interface or not policy.selected_transport:
+        if (
+            not policy.enabled
+            or not policy.selected_interface
+            or not policy.selected_transport
+        ):
             continue
         table = _route_table_for_transport(policy.selected_transport)
         _ip(

@@ -3,16 +3,9 @@ import logging
 from contextlib import asynccontextmanager
 from typing import Any
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-    force=True,
-)
-
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import select
-from sqlalchemy import func
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from starlette.middleware.sessions import SessionMiddleware
@@ -21,9 +14,25 @@ from app.core.config import settings
 from app.core.agent_ws import broadcast_peers
 from app.core.websocket import broadcast_state
 from app.db.base import AsyncSessionLocal, Base, engine, get_session
-from app.db.models import Node, NodeStatus, Site, TransportLink
-from app.routers import agent_ws, auth, auth_web, bgp, events, nodes, peers, policies, ws
+from app.db.models import Node, NodeStatus, Site
+from app.routers import (
+    agent_ws,
+    auth,
+    auth_web,
+    bgp,
+    events,
+    nodes,
+    peers,
+    policies,
+    ws,
+)
 from app.services import frr_service, node_service, wireguard_service
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    force=True,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -63,18 +72,22 @@ async def lifespan(app: FastAPI):
                 selectinload(Node.transport_links),
                 selectinload(Node.site).selectinload(Site.prefixes),
             )
-            .where(
-                Node.status.in_([NodeStatus.ACTIVE, NodeStatus.OFFLINE])
-            )
+            .where(Node.status.in_([NodeStatus.ACTIVE, NodeStatus.OFFLINE]))
         )
         existing_nodes = list(result.scalars().all())
 
     if existing_nodes:
-        logger.info("Syncing %d node(s) to WireGuard and FRR on startup", len(existing_nodes))
+        logger.info(
+            "Syncing %d node(s) to WireGuard and FRR on startup", len(existing_nodes)
+        )
         await wireguard_service.sync_peers(existing_nodes)
         for node in existing_nodes:
             for link in sorted(
-                [item for item in node.transport_links if item.wireguard_public_key and item.overlay_vpn_ip],
+                [
+                    item
+                    for item in node.transport_links
+                    if item.wireguard_public_key and item.overlay_vpn_ip
+                ],
                 key=lambda item: (item.priority, item.kind.value),
             ):
                 await frr_service.add_bfd_peer(link, node.name)

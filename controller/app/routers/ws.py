@@ -1,5 +1,3 @@
-import json
-
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from app.core.websocket import broadcast_state, manager

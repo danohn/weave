@@ -21,9 +21,13 @@ def _to_response(policy) -> DestinationPolicyResponse:
         destination_prefix=policy.destination_prefix,
         description=policy.description,
         site_id=policy.site_id,
-        site_name=policy.site.name if getattr(policy, "site", None) is not None else None,
+        site_name=policy.site.name
+        if getattr(policy, "site", None) is not None
+        else None,
         node_id=policy.node_id,
-        node_name=policy.node.name if getattr(policy, "node", None) is not None else None,
+        node_name=policy.node.name
+        if getattr(policy, "node", None) is not None
+        else None,
         preferred_transport=policy.preferred_transport,
         fallback_transport=policy.fallback_transport,
         selected_transport=None,

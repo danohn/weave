@@ -59,7 +59,9 @@ async def get_bgp_status() -> dict[str, dict]:
                 "uptime": peer.get("peerUptime", "never"),
                 "prefixes_received": peer.get("pfxRcd", 0),
                 "hostname": peer.get("hostname"),
-                "bfd_status": neighbor_details.get(ip, {}).get("peerBfdInfo", {}).get("status"),
+                "bfd_status": neighbor_details.get(ip, {})
+                .get("peerBfdInfo", {})
+                .get("status"),
                 "last_reset_due_to": neighbor_details.get(ip, {}).get("lastResetDueTo"),
                 "host_local": neighbor_details.get(ip, {}).get("hostLocal"),
                 "host_foreign": neighbor_details.get(ip, {}).get("hostForeign"),
@@ -95,9 +97,16 @@ async def add_bfd_peer(link: TransportLink, node_name: str) -> None:
             "end",
             "write memory",
         )
-        logger.info("BFD: registered peer %s/%s (%s)", node_name, link.kind.value, link.overlay_vpn_ip)
+        logger.info(
+            "BFD: registered peer %s/%s (%s)",
+            node_name,
+            link.kind.value,
+            link.overlay_vpn_ip,
+        )
     except Exception as exc:
-        logger.warning("BFD: could not register peer %s/%s: %s", node_name, link.kind.value, exc)
+        logger.warning(
+            "BFD: could not register peer %s/%s: %s", node_name, link.kind.value, exc
+        )
 
 
 async def remove_bfd_peer(link: TransportLink, node_name: str) -> None:
@@ -110,9 +119,16 @@ async def remove_bfd_peer(link: TransportLink, node_name: str) -> None:
             "end",
             "write memory",
         )
-        logger.info("BFD: removed peer %s/%s (%s)", node_name, link.kind.value, link.overlay_vpn_ip)
+        logger.info(
+            "BFD: removed peer %s/%s (%s)",
+            node_name,
+            link.kind.value,
+            link.overlay_vpn_ip,
+        )
     except Exception as exc:
-        logger.warning("BFD: could not remove peer %s/%s: %s", node_name, link.kind.value, exc)
+        logger.warning(
+            "BFD: could not remove peer %s/%s: %s", node_name, link.kind.value, exc
+        )
 
 
 async def add_neighbor(link: TransportLink, node_name: str) -> None:
@@ -131,9 +147,16 @@ async def add_neighbor(link: TransportLink, node_name: str) -> None:
             "end",
             "write memory",
         )
-        logger.info("BGP: added neighbor %s/%s (%s)", node_name, link.kind.value, link.overlay_vpn_ip)
+        logger.info(
+            "BGP: added neighbor %s/%s (%s)",
+            node_name,
+            link.kind.value,
+            link.overlay_vpn_ip,
+        )
     except Exception as exc:
-        logger.warning("BGP: could not add neighbor %s/%s: %s", node_name, link.kind.value, exc)
+        logger.warning(
+            "BGP: could not add neighbor %s/%s: %s", node_name, link.kind.value, exc
+        )
 
 
 async def remove_neighbor(link: TransportLink, node_name: str) -> None:
@@ -148,15 +171,28 @@ async def remove_neighbor(link: TransportLink, node_name: str) -> None:
             "end",
             "write memory",
         )
-        logger.info("BGP: removed neighbor %s/%s (%s)", node_name, link.kind.value, link.overlay_vpn_ip)
+        logger.info(
+            "BGP: removed neighbor %s/%s (%s)",
+            node_name,
+            link.kind.value,
+            link.overlay_vpn_ip,
+        )
     except Exception as exc:
-        logger.warning("BGP: could not remove neighbor %s/%s: %s", node_name, link.kind.value, exc)
+        logger.warning(
+            "BGP: could not remove neighbor %s/%s: %s", node_name, link.kind.value, exc
+        )
 
 
 def generate_node_config(node: Node) -> str:
     """Generate the FRR config for an edge node (fetched via GET /frr-config)."""
     active_links = sorted(
-        [link for link in node.transport_links if link.wireguard_public_key and link.overlay_vpn_ip and link.controller_vpn_ip],
+        [
+            link
+            for link in node.transport_links
+            if link.wireguard_public_key
+            and link.overlay_vpn_ip
+            and link.controller_vpn_ip
+        ],
         key=lambda item: (item.priority, item.kind.value),
     )
     router_id = active_links[0].overlay_vpn_ip if active_links else node.vpn_ip
@@ -190,7 +226,9 @@ def generate_node_config(node: Node) -> str:
     ]
     for link in active_links:
         lines.append(f"  neighbor {link.controller_vpn_ip} activate")
-        lines.append(f"  neighbor {link.controller_vpn_ip} soft-reconfiguration inbound")
+        lines.append(
+            f"  neighbor {link.controller_vpn_ip} soft-reconfiguration inbound"
+        )
     if node.site_subnet:
         lines.append(f"  network {node.site_subnet}")
     lines += [

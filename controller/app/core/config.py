@@ -24,9 +24,11 @@ class Settings(BaseSettings):
     OIDC_REDIRECT_URI: str | None = None
     OIDC_SCOPES: str = "openid email profile"
     OIDC_ADMIN_GROUP: str | None = None
-    STALE_THRESHOLD_SECONDS: int = 75   # mark OFFLINE after this many seconds (~2.5 heartbeats)
-    STALE_CHECK_INTERVAL: int = 15      # run the expiry sweep this often
-    REQUIRE_PREAUTH: bool = True        # reject registration without a valid bootstrap claim
+    STALE_THRESHOLD_SECONDS: int = (
+        75  # mark OFFLINE after this many seconds (~2.5 heartbeats)
+    )
+    STALE_CHECK_INTERVAL: int = 15  # run the expiry sweep this often
+    REQUIRE_PREAUTH: bool = True  # reject registration without a valid bootstrap claim
 
     # Controller overlay — WireGuard route reflector running inside the container.
     CONTROLLER_VPN_IP: str = "10.0.0.254"
