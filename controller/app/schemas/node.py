@@ -180,6 +180,8 @@ class NodeAdminResponse(BaseModel):
     last_seen: datetime
     created_at: datetime
     site: Optional[SiteSummaryResponse] = None
+    active_overlay_vpn_ip: Optional[str] = None
+    active_overlay_interface: Optional[str] = None
     active_transport: Optional[TransportLinkResponse] = None
     transport_links: list[TransportLinkResponse] = Field(default_factory=list)
 
@@ -245,6 +247,8 @@ def build_node_admin_response(node) -> NodeAdminResponse:
         last_seen=node.last_seen,
         created_at=node.created_at,
         site=site,
+        active_overlay_vpn_ip=active_transport.overlay_vpn_ip if active_transport is not None else None,
+        active_overlay_interface=active_transport.interface_name if active_transport is not None else None,
         active_transport=active_transport,
         transport_links=transport_links,
     )

@@ -126,6 +126,7 @@ export default function NodesView() {
               <th>Status</th>
               <th>BGP</th>
               <th>VPN IP</th>
+              <th>Active Overlay</th>
               <th>Site</th>
               <th>Endpoint</th>
               <th>Prefix</th>
@@ -136,9 +137,10 @@ export default function NodesView() {
           </thead>
           <tbody>
             {sorted.length === 0 ? (
-              <tr><td colSpan={10}><div className="placeholder">No nodes registered yet</div></td></tr>
+              <tr><td colSpan={11}><div className="placeholder">No nodes registered yet</div></td></tr>
             ) : sorted.map(n => {
-              const bgpInfo    = bgp[n.vpn_ip]
+              const bgpKey     = n.active_overlay_vpn_ip || n.vpn_ip
+              const bgpInfo    = bgp[bgpKey]
               const advertised = bgpInfo && bgpInfo.prefixes_received > 0
               return (
                 <tr key={n.id}>
@@ -146,6 +148,12 @@ export default function NodesView() {
                   <td><Badge status={n.status} /></td>
                   <td><BgpBadge info={bgpInfo} /></td>
                   <td className="td-mono">{n.vpn_ip}</td>
+                  <td className="td-mono">
+                    {n.active_overlay_vpn_ip || <span className="td-empty">—</span>}
+                    {n.active_overlay_interface && (
+                      <div className="table-subtext">{n.active_overlay_interface}</div>
+                    )}
+                  </td>
                   <td>
                     {n.site ? (
                       <>

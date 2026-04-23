@@ -253,7 +253,6 @@ async def sync_node_compat_fields(session: AsyncSession, node: Node) -> Node:
         primary_prefix = prefix_result.scalars().first()
     node.site_subnet = primary_prefix.prefix if primary_prefix is not None else None
     if active_link is not None:
-        node.vpn_ip = active_link.overlay_vpn_ip or node.vpn_ip
         node.endpoint_ip = active_link.endpoint_ip or node.endpoint_ip
         node.endpoint_port = active_link.endpoint_port or node.endpoint_port
         node.reflected_endpoint_ip = active_link.reflected_endpoint_ip
