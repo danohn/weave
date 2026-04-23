@@ -165,10 +165,16 @@ Upgrade an installed agent:
 uv tool upgrade weave-agent
 ```
 
-Version bumps and release tags are managed with `bump-my-version` from the repository root:
+Install the repo release tooling once from the repository root:
 
 ```bash
-uv run --directory controller bump-my-version bump patch
+uv sync --group dev
+```
+
+Version bumps and release tags are then managed from the repository root:
+
+```bash
+uv run bump-my-version bump patch
 ```
 
 That updates the shared repo release version, creates a release commit, and tags it as `vX.Y.Z`. Pushing the tag triggers the GitHub Actions workflows that publish `weave-agent`, publish the Docker images, and create the GitHub release automatically.
