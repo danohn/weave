@@ -2,7 +2,7 @@
 # Install the Weave agent on a Debian/Ubuntu host.
 # Designed to be run directly via curl — no local repo checkout required:
 #
-#   REF=v0.1.0
+#   REF=v0.2.0
 #   curl -fsSL "https://raw.githubusercontent.com/danohn/weave/${REF}/agent/install.sh" \
 #     | bash -s -- --controller-url URL [OPTIONS]
 #

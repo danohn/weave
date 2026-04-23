@@ -12,7 +12,7 @@ dev = [
 package = false
 
 [tool.bumpversion]
-current_version = "0.1.0"
+current_version = "0.2.0"
 parse = '(?P<major>\d+)\.(?P<minor>\d+)\.(?P<patch>\d+)'
 serialize = ["{major}.{minor}.{patch}"]
 search = "{current_version}"
@@ -49,20 +49,20 @@ replace = "WEAVE_VERSION=v{new_version}"
 
 [[tool.bumpversion.files]]
 filename = "docker-compose.yml"
-search = "ghcr.io/danohn/weave-frontend:${WEAVE_VERSION:-v{current_version}}"
-replace = "ghcr.io/danohn/weave-frontend:${WEAVE_VERSION:-v{new_version}}"
+search = "ghcr.io/danohn/weave-frontend:${{WEAVE_VERSION:-v{current_version}}}"
+replace = "ghcr.io/danohn/weave-frontend:${{WEAVE_VERSION:-v{new_version}}}"
 
 [[tool.bumpversion.files]]
 filename = "docker-compose.yml"
-search = "ghcr.io/danohn/weave-controller:${WEAVE_VERSION:-v{current_version}}"
-replace = "ghcr.io/danohn/weave-controller:${WEAVE_VERSION:-v{new_version}}"
+search = "ghcr.io/danohn/weave-controller:${{WEAVE_VERSION:-v{current_version}}}"
+replace = "ghcr.io/danohn/weave-controller:${{WEAVE_VERSION:-v{new_version}}}"
 
 [[tool.bumpversion.files]]
 filename = "docker-compose.with-traefik.yml"
-search = "ghcr.io/danohn/weave-frontend:${WEAVE_VERSION:-v{current_version}}"
-replace = "ghcr.io/danohn/weave-frontend:${WEAVE_VERSION:-v{new_version}}"
+search = "ghcr.io/danohn/weave-frontend:${{WEAVE_VERSION:-v{current_version}}}"
+replace = "ghcr.io/danohn/weave-frontend:${{WEAVE_VERSION:-v{new_version}}}"
 
 [[tool.bumpversion.files]]
 filename = "docker-compose.with-traefik.yml"
-search = "ghcr.io/danohn/weave-controller:${WEAVE_VERSION:-v{current_version}}"
-replace = "ghcr.io/danohn/weave-controller:${WEAVE_VERSION:-v{new_version}}"
+search = "ghcr.io/danohn/weave-controller:${{WEAVE_VERSION:-v{current_version}}}"
+replace = "ghcr.io/danohn/weave-controller:${{WEAVE_VERSION:-v{new_version}}}"
