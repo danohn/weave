@@ -42,7 +42,8 @@ class AgentConnectionManager:
             payload = {"peers": [p.model_dump(mode="json") for p in peers]}
             await ws.send_json(payload)
         except Exception as exc:
-            logger.warning("Failed to send peers to agent %s: %s", node_id, exc)
+            # WS is already closed — clean up the stale entry silently
+            logger.debug("Peer push to agent %s failed (%s); removing stale connection", node_id, exc)
             self.disconnect(node_id)
 
     async def broadcast_peers(self, session: AsyncSession) -> None:

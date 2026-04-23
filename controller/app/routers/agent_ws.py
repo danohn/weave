@@ -29,41 +29,43 @@ async def agent_ws(websocket: WebSocket, node_id: str) -> None:
     auth_header = websocket.headers.get("authorization", "")
     token = auth_header.removeprefix("Bearer ").strip()
 
+    # Validate token in a short-lived session — don't hold it open for the
+    # duration of the WebSocket connection (could be hours).
     async with AsyncSessionLocal() as session:
-        # Validate token and node ownership
         node = await find_node_for_token(session, token)
-
         if not node or str(node.id) != node_id or node.status == NodeStatus.REVOKED:
             await websocket.close(code=4001)
             return
+        node_id_str = str(node.id)
 
-        await agent_manager.connect(node_id, websocket)
-        logger.info("Agent %s connected", node_id)
-        try:
-            # Push current peer list immediately on connect
-            await agent_manager.send_peers(node_id, session)
+    await agent_manager.connect(node_id_str, websocket)
+    logger.info("Agent %s connected", node_id_str)
+    try:
+        # Push current peer list immediately on connect (opens its own session)
+        async with AsyncSessionLocal() as session:
+            await agent_manager.send_peers(node_id_str, session)
 
-            # Keepalive loop: ping the agent every PING_INTERVAL seconds.
-            # TCP alone won't detect a dead connection when a cable is unplugged
-            # (no RST is sent). By waiting for a pong with a timeout we detect
-            # it within PING_INTERVAL + PING_TIMEOUT seconds.
-            while True:
-                await asyncio.sleep(PING_INTERVAL)
-                try:
-                    await websocket.send_json({"type": "ping"})
-                except Exception:
-                    break  # send failed — connection already gone
-                try:
-                    await asyncio.wait_for(websocket.receive_text(), timeout=PING_TIMEOUT)
-                except asyncio.TimeoutError:
-                    logger.info("Agent %s ping timeout — declaring offline", node_id)
-                    break
+        # Keepalive loop: ping the agent every PING_INTERVAL seconds.
+        # TCP alone won't detect a dead connection when a cable is unplugged
+        # (no RST is sent). By waiting for a pong with a timeout we detect
+        # it within PING_INTERVAL + PING_TIMEOUT seconds.
+        while True:
+            await asyncio.sleep(PING_INTERVAL)
+            try:
+                await websocket.send_json({"type": "ping"})
+            except Exception:
+                break  # send failed — connection already gone
+            try:
+                await asyncio.wait_for(websocket.receive_text(), timeout=PING_TIMEOUT)
+            except asyncio.TimeoutError:
+                logger.info("Agent %s ping timeout — declaring offline", node_id_str)
+                break
 
-        except WebSocketDisconnect:
-            pass
-        finally:
-            agent_manager.disconnect(node_id)
-            logger.info(
-                "Agent %s peer stream disconnected; keeping status unchanged until heartbeat expiry or clean shutdown",
-                node_id,
-            )
+    except WebSocketDisconnect:
+        pass
+    finally:
+        agent_manager.disconnect(node_id_str)
+        logger.info(
+            "Agent %s peer stream disconnected; keeping status unchanged until heartbeat expiry or clean shutdown",
+            node_id_str,
+        )
