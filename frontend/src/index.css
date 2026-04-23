@@ -205,8 +205,58 @@ header {
   margin-bottom: 20px;
 }
 
-@media (max-width: 700px) {
+/* ── Responsive: tablet & mobile (≤ 768px) ────────────────── */
+@media (max-width: 768px) {
+  header { padding: 0 16px; }
+  .header-user { display: none; }
+
+  .app-body { flex-direction: column; }
+
+  /* Sidebar becomes a sticky bottom tab bar */
+  .sidebar {
+    order: 2;
+    width: 100%;
+    height: 52px;
+    flex-shrink: 0;
+    border-right: none;
+    border-top: 1px solid var(--gray-200);
+    padding: 0;
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    overflow: hidden;
+  }
+
+  .nav-item {
+    flex: 1;
+    margin: 0;
+    border-radius: 0;
+    padding: 0 8px;
+    justify-content: center;
+    font-size: 12px;
+  }
+
+  .content {
+    padding: 16px 16px 20px;
+  }
+
+  /* Tables scroll horizontally on small screens */
+  .table-shell { overflow-x: auto; }
+
   .stats { grid-template-columns: repeat(3, 1fr); }
+
+  /* Section header wraps when tight */
+  .section-head { flex-wrap: wrap; gap: 8px; }
+
+  /* Move toasts above bottom nav */
+  #toasts { bottom: 68px; left: 16px; right: 16px; }
+}
+
+/* ── Responsive: small phones (≤ 480px) ──────────────────── */
+@media (max-width: 480px) {
+  .stats { grid-template-columns: repeat(2, 1fr); }
+
+  .btn { padding: 0 10px; }
 }
 
 .stat-card {
