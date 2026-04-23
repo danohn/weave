@@ -4,7 +4,6 @@ from typing import Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.db.models import NodeStatus, TransportKind, TransportStatus
-from app.services.node_service import canonical_transport_link
 
 
 class TransportLinkHeartbeatReport(BaseModel):
@@ -187,6 +186,27 @@ class NodeAdminResponse(BaseModel):
     transport_links: list[TransportLinkResponse] = Field(default_factory=list)
 
 
+def _canonical_transport_link(node):
+    links = [
+        link
+        for link in getattr(node, "transport_links", [])
+        if getattr(link, "overlay_vpn_ip", None)
+    ]
+    if not links:
+        return None
+    internet_links = sorted(
+        [link for link in links if link.kind == TransportKind.INTERNET],
+        key=lambda item: (
+            item.priority,
+            item.created_at or datetime.min,
+        ),
+    )
+    if internet_links:
+        return internet_links[0]
+    links.sort(key=lambda item: (item.priority, item.created_at or datetime.min))
+    return links[0]
+
+
 def build_node_admin_response(node) -> NodeAdminResponse:
     site = None
     site_obj = getattr(node, "site", None)
@@ -232,7 +252,7 @@ def build_node_admin_response(node) -> NodeAdminResponse:
         for link in getattr(node, "transport_links", [])
     ]
     active_transport = next((link for link in transport_links if link.is_active), None)
-    canonical_transport = canonical_transport_link(node)
+    canonical_transport = _canonical_transport_link(node)
 
     return NodeAdminResponse(
         id=node.id,
