@@ -47,15 +47,29 @@ for item in subnets:
     if "=" not in item:
         continue
     _, subnet = item.split("=", 1)
-    network = ipaddress.ip_network(subnet.strip(), strict=False)
+    subnet = subnet.strip()
+    network = ipaddress.ip_network(subnet, strict=False)
     controller_ip = str(list(network.hosts())[-1])
     if controller_ip == controller_vpn_ip or controller_ip in existing_addrs:
-        continue
-    subprocess.run(
-        ["ip", "addr", "add", f"{controller_ip}/32", "dev", wg_interface],
+        pass
+    else:
+        subprocess.run(
+            ["ip", "addr", "add", f"{controller_ip}/32", "dev", wg_interface],
+            check=True,
+        )
+        print(f"[wg] Added overlay address {controller_ip}/32 to {wg_interface}")
+    route_check = subprocess.run(
+        ["ip", "route", "show", subnet, "dev", wg_interface],
+        capture_output=True,
+        text=True,
         check=True,
     )
-    print(f"[wg] Added overlay address {controller_ip}/32 to {wg_interface}")
+    if not route_check.stdout.strip():
+        subprocess.run(
+            ["ip", "route", "add", subnet, "dev", wg_interface],
+            check=True,
+        )
+        print(f"[wg] Added overlay route {subnet} dev {wg_interface}")
 PY
 
 wg set "$WG_INTERFACE" \
