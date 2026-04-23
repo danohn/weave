@@ -14,6 +14,7 @@ class Settings(BaseSettings):
 
     # Session
     SESSION_SECRET: str = "changeme-session-secret"
+    SESSION_COOKIE_SECURE: bool | None = None
 
     # OIDC
     OIDC_ISSUER: str = ""
@@ -35,6 +36,12 @@ class Settings(BaseSettings):
     # Domain agents already use to reach the controller — reused as the
     # WireGuard endpoint hostname so no separate IP config is needed.
     WEAVE_DOMAIN: str = ""
+
+    @property
+    def session_cookie_secure(self) -> bool:
+        if self.SESSION_COOKIE_SECURE is not None:
+            return self.SESSION_COOKIE_SECURE
+        return bool(self.WEAVE_DOMAIN)
 
 
 settings = Settings()

@@ -90,7 +90,7 @@ app.add_middleware(
     secret_key=settings.SESSION_SECRET,
     session_cookie="weave_session",
     same_site="lax",
-    https_only=True,
+    https_only=settings.session_cookie_secure,
     max_age=86400 * 7,
 )
 

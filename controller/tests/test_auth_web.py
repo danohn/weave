@@ -27,7 +27,7 @@ def _make_hs256_jwt(claims: dict, *, secret: str, kid: str = "test-key") -> str:
     return f"{signing_input}.{_b64url(signature)}"
 
 
-async def _start_oidc(secure_client: AsyncClient, monkeypatch) -> str:
+async def _start_oidc(client: AsyncClient, monkeypatch) -> str:
     monkeypatch.setattr(settings, "OIDC_ISSUER", "https://issuer.example")
     monkeypatch.setattr(settings, "OIDC_CLIENT_ID", "weave-ui")
     monkeypatch.setattr(settings, "OIDC_CLIENT_SECRET", "client-secret")
@@ -45,17 +45,17 @@ async def _start_oidc(secure_client: AsyncClient, monkeypatch) -> str:
 
     monkeypatch.setattr(auth_web, "_discover", fake_discover)
 
-    response = await secure_client.get("/auth/oidc/start")
+    response = await client.get("/auth/oidc/start")
     assert response.status_code in {302, 307}
     params = parse_qs(urlparse(response.headers["location"]).query)
     return params["state"][0]
 
 
 async def test_oidc_callback_accepts_valid_signed_id_token(
-    secure_client: AsyncClient,
+    client: AsyncClient,
     monkeypatch,
 ):
-    state = await _start_oidc(secure_client, monkeypatch)
+    state = await _start_oidc(client, monkeypatch)
     jwks = {
         "keys": [
             {
@@ -86,11 +86,11 @@ async def test_oidc_callback_accepts_valid_signed_id_token(
     monkeypatch.setattr(auth_web, "_exchange_code_for_tokens", fake_exchange_code_for_tokens)
     monkeypatch.setattr(auth_web, "_fetch_jwks", fake_fetch_jwks)
 
-    callback = await secure_client.get(f"/auth/callback?code=test-code&state={state}")
+    callback = await client.get(f"/auth/callback?code=test-code&state={state}")
     assert callback.status_code in {302, 307}
     assert callback.headers["location"] == "/"
 
-    me = await secure_client.get("/auth/me")
+    me = await client.get("/auth/me")
     assert me.status_code == 200
     assert me.json() == {
         "username": "daniel",
@@ -99,10 +99,10 @@ async def test_oidc_callback_accepts_valid_signed_id_token(
 
 
 async def test_oidc_callback_rejects_invalid_id_token_signature(
-    secure_client: AsyncClient,
+    client: AsyncClient,
     monkeypatch,
 ):
-    state = await _start_oidc(secure_client, monkeypatch)
+    state = await _start_oidc(client, monkeypatch)
     jwks = {
         "keys": [
             {
@@ -131,10 +131,9 @@ async def test_oidc_callback_rejects_invalid_id_token_signature(
     monkeypatch.setattr(auth_web, "_exchange_code_for_tokens", fake_exchange_code_for_tokens)
     monkeypatch.setattr(auth_web, "_fetch_jwks", fake_fetch_jwks)
 
-    callback = await secure_client.get(f"/auth/callback?code=test-code&state={state}")
+    callback = await client.get(f"/auth/callback?code=test-code&state={state}")
     assert callback.status_code == 401
     assert callback.json()["detail"] == "Invalid ID token"
 
-    me = await secure_client.get("/auth/me")
+    me = await client.get("/auth/me")
     assert me.status_code == 401
-

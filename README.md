@@ -33,6 +33,8 @@ SESSION_SECRET=dev OIDC_ISSUER=... uv run uvicorn app.main:app --reload
 # API at http://localhost:8000, docs at http://localhost:8000/docs
 ```
 
+`SESSION_COOKIE_SECURE` defaults to `false` in local HTTP dev and `true` when `WEAVE_DOMAIN` is set. Override it explicitly if your setup needs different cookie behavior.
+
 Run the frontend dev server:
 
 ```bash
@@ -79,6 +81,7 @@ Traefik starts as part of the stack and listens on port 80. Point DNS at the Doc
 |---|---|---|
 | `WEAVE_DOMAIN` | Yes | Domain Traefik routes to the dashboard and API |
 | `SESSION_SECRET` | Yes | Secret key for signing sessions |
+| `SESSION_COOKIE_SECURE` | No | Force Secure session cookies on/off (auto-enables when `WEAVE_DOMAIN` is set) |
 | `OIDC_ISSUER` | Yes | OIDC provider issuer URL |
 | `OIDC_CLIENT_ID` | Yes | OIDC client ID |
 | `OIDC_CLIENT_SECRET` | Yes | OIDC client secret |
