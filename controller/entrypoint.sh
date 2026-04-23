@@ -7,7 +7,9 @@ set -euo pipefail
 WG_INTERFACE="${WG_INTERFACE:-wg0}"
 CONTROLLER_VPN_IP="${CONTROLLER_VPN_IP:-10.0.0.254}"
 CONTROLLER_ENDPOINT_PORT="${CONTROLLER_ENDPOINT_PORT:-51820}"
+TRANSPORT_OVERLAY_SUBNETS="${TRANSPORT_OVERLAY_SUBNETS:-internet=10.0.0.0/24,mpls=10.0.1.0/24,lte=10.0.2.0/24,other=10.0.3.0/24}"
 WG_KEY_FILE="/app/data/rr-privatekey"
+export WG_INTERFACE CONTROLLER_VPN_IP TRANSPORT_OVERLAY_SUBNETS
 
 echo "=== Weave controller starting ==="
 
@@ -28,6 +30,33 @@ if ! ip link show "$WG_INTERFACE" &>/dev/null; then
   ip addr add "${CONTROLLER_VPN_IP}/24" dev "$WG_INTERFACE"
   echo "[wg] Created interface $WG_INTERFACE"
 fi
+
+python3 - <<'PY'
+import ipaddress
+import os
+import subprocess
+
+wg_interface = os.environ["WG_INTERFACE"]
+controller_vpn_ip = os.environ["CONTROLLER_VPN_IP"]
+subnets = os.environ["TRANSPORT_OVERLAY_SUBNETS"].split(",")
+
+existing = subprocess.check_output(["ip", "-o", "-4", "addr", "show", "dev", wg_interface], text=True)
+existing_addrs = {line.split()[3].split("/")[0] for line in existing.splitlines()}
+
+for item in subnets:
+    if "=" not in item:
+        continue
+    _, subnet = item.split("=", 1)
+    network = ipaddress.ip_network(subnet.strip(), strict=False)
+    controller_ip = str(list(network.hosts())[-1])
+    if controller_ip == controller_vpn_ip or controller_ip in existing_addrs:
+        continue
+    subprocess.run(
+        ["ip", "addr", "add", f"{controller_ip}/32", "dev", wg_interface],
+        check=True,
+    )
+    print(f"[wg] Added overlay address {controller_ip}/32 to {wg_interface}")
+PY
 
 wg set "$WG_INTERFACE" \
   private-key "$WG_KEY_FILE" \
