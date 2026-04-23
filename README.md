@@ -171,7 +171,7 @@ Cloud providers also need an inbound rule in their security group for UDP 51820.
 
 ## Troubleshooting
 
-**API returns HTML instead of JSON** — the request hit nginx instead of the controller. Check that the controller is up and Traefik is routing `/api`, `/ws`, `/health`, and `/auth` to the API service.
+**API returns HTML instead of JSON** — the request hit nginx instead of the controller. Check that the controller is up and Traefik is routing `/api`, `/ws`, `/health`, `/auth`, `/docs`, and `/openapi.json` to the API service.
 
 **Dashboard loads but stops updating** — check the browser console and confirm `GET /ws` is reaching the controller. A failed WebSocket upgrade usually means the controller is down or the proxy isn't forwarding WebSocket traffic.
 

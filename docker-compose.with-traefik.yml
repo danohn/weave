@@ -59,7 +59,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=weave_backend"
-      - "traefik.http.routers.weave-api.rule=Host(`${WEAVE_DOMAIN}`) && (PathPrefix(`/api`) || PathPrefix(`/ws`) || PathPrefix(`/health`) || PathPrefix(`/auth`))"
+      - "traefik.http.routers.weave-api.rule=Host(`${WEAVE_DOMAIN}`) && (PathPrefix(`/api`) || PathPrefix(`/ws`) || PathPrefix(`/health`) || PathPrefix(`/auth`) || PathPrefix(`/docs`) || PathPrefix(`/redoc`) || PathPrefix(`/openapi.json`))"
       - "traefik.http.routers.weave-api.entrypoints=web"
       - "traefik.http.routers.weave-api.priority=100"
       - "traefik.http.routers.weave-api.service=weave-api"
