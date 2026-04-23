@@ -129,6 +129,7 @@ async def oidc_callback(
     return RedirectResponse("/")
 
 
+@router.get("/logout")
 @router.post("/logout")
 async def logout(request: Request) -> RedirectResponse:
     request.session.clear()

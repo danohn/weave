@@ -22,9 +22,8 @@ export function AuthProvider({ children }) {
     return () => window.removeEventListener('auth:expired', handler)
   }, [])
 
-  const logout = useCallback(async () => {
-    await fetch('/auth/logout', { method: 'POST', credentials: 'include' })
-    setUser(null)
+  const logout = useCallback(() => {
+    window.location.href = '/auth/logout'
   }, [])
 
   return (
