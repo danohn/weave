@@ -7,7 +7,7 @@ import sys
 from agent import frr
 from agent import wireguard as wg
 from agent.config import Settings
-from agent.controller import ControllerClient, parse_peer
+from agent.controller import ControllerClient, TransportLinkHeartbeat, parse_peer
 from agent.state import NodeState
 from agent import state as state_store
 
@@ -26,11 +26,16 @@ logger = logging.getLogger(__name__)
 async def wait_until_active(
     client: ControllerClient,
     node: NodeState,
+    settings: Settings,
 ) -> None:
     """Poll heartbeat until the node is ACTIVE. Blocks until then."""
     while True:
         try:
-            resp = await client.heartbeat(node.node_id, node.auth_token)
+            resp = await client.heartbeat(
+                node.node_id,
+                node.auth_token,
+                transport_links=_transport_reports(settings),
+            )
             if resp.status == "ACTIVE":
                 logger.info("Node is ACTIVE")
                 return
@@ -43,17 +48,37 @@ async def wait_until_active(
         await asyncio.sleep(10)
 
 
-async def heartbeat_loop(client: ControllerClient, node: NodeState, interval: int) -> None:
+async def heartbeat_loop(
+    client: ControllerClient,
+    node: NodeState,
+    settings: Settings,
+    interval: int,
+) -> None:
     while True:
         await asyncio.sleep(interval)
         try:
-            resp = await client.heartbeat(node.node_id, node.auth_token)
+            resp = await client.heartbeat(
+                node.node_id,
+                node.auth_token,
+                transport_links=_transport_reports(settings),
+            )
             logger.debug("Heartbeat ok — status=%s", resp.status)
             if resp.status == "REVOKED":
                 logger.error("Node has been revoked — exiting")
                 sys.exit(0)
         except Exception as exc:
             logger.warning("Heartbeat failed: %s", exc)
+
+
+def _transport_reports(settings: Settings) -> list[TransportLinkHeartbeat]:
+    return [
+        TransportLinkHeartbeat(
+            name=settings.TRANSPORT_NAME,
+            kind=settings.TRANSPORT_KIND,
+            endpoint_port=settings.ENDPOINT_PORT,
+            interface_name=settings.INTERFACE,
+        )
+    ]
 
 
 WS_RECONNECT_INTERVAL = 5  # seconds between WebSocket reconnect attempts
@@ -145,7 +170,7 @@ async def run() -> None:
         )
 
     # Block until an admin activates the node
-    await wait_until_active(client, node)
+    await wait_until_active(client, node, settings)
 
     # Bring up the interface and load the initial peer list (with retry)
     peers: list = []
@@ -199,7 +224,7 @@ async def run() -> None:
                 task.cancel()
 
     await asyncio.gather(
-        heartbeat_loop(client, node, settings.HEARTBEAT_INTERVAL),
+        heartbeat_loop(client, node, settings, settings.HEARTBEAT_INTERVAL),
         peer_loop(client, node, settings),
         _shutdown_watcher(),
         return_exceptions=True,

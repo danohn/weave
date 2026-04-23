@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 
 import httpx
 import websockets
@@ -18,6 +18,18 @@ class HeartbeatResponse:
 
 
 @dataclass
+class TransportLinkHeartbeat:
+    name: str = "wan1"
+    kind: str = "internet"
+    endpoint_ip: str | None = None
+    endpoint_port: int | None = None
+    interface_name: str | None = None
+    rtt_ms: int | None = None
+    jitter_ms: int | None = None
+    loss_pct: int | None = None
+
+
+@dataclass
 class Peer:
     name: str
     wireguard_public_key: str
@@ -25,6 +37,10 @@ class Peer:
     preferred_endpoint: str
     endpoint_port: int
     site_subnet: str | None = None
+    site_id: str | None = None
+    site_name: str | None = None
+    transport_link_id: str | None = None
+    transport_kind: str | None = None
 
 
 def parse_peer(data: dict) -> Peer:
@@ -67,10 +83,19 @@ class ControllerClient:
         resp.raise_for_status()
         return parse_register_response(resp.json())
 
-    async def heartbeat(self, node_id: str, token: str) -> HeartbeatResponse:
+    async def heartbeat(
+        self,
+        node_id: str,
+        token: str,
+        transport_links: list[TransportLinkHeartbeat] | None = None,
+    ) -> HeartbeatResponse:
+        payload = {
+            "transport_links": [asdict(item) for item in (transport_links or [])]
+        }
         resp = await self._client.post(
             f"{self._base}/api/v1/nodes/{node_id}/heartbeat",
             headers={"Authorization": f"Bearer {token}"},
+            json=payload,
         )
         resp.raise_for_status()
         return HeartbeatResponse(**resp.json())

@@ -8,6 +8,8 @@ from app.core.websocket import broadcast_state
 from app.db.base import get_session
 from app.db.models import Node, NodeStatus
 from app.schemas.node import (
+    build_node_admin_response,
+    HeartbeatRequest,
     HeartbeatResponse,
     NodeAdminResponse,
     NodeRegisterRequest,
@@ -57,6 +59,7 @@ async def register(
 async def heartbeat(
     node_id: str,
     request: Request,
+    data: HeartbeatRequest | None = None,
     current_node: Node = Depends(get_current_node),
     session: AsyncSession = Depends(get_session),
 ) -> HeartbeatResponse:
@@ -65,7 +68,12 @@ async def heartbeat(
     if current_node.status == NodeStatus.REVOKED:
         raise HTTPException(status_code=403, detail="Node is revoked")
     was_offline = current_node.status == NodeStatus.OFFLINE
-    node = await node_service.update_heartbeat(current_node, request, session)
+    node = await node_service.update_heartbeat(
+        current_node,
+        request,
+        session,
+        transport_links=[item.model_dump(mode="json") for item in (data.transport_links if data else [])],
+    )
     await broadcast_state(session)
     await broadcast_peers(session)
     # Update the WG peer endpoint when a node recovers from OFFLINE — its
@@ -134,7 +142,7 @@ async def update_node(
         await wireguard_service.add_peer(node)
     await broadcast_peers(session)
     await broadcast_state(session)
-    return NodeAdminResponse.model_validate(node)
+    return build_node_admin_response(node)
 
 
 @router.patch("/{node_id}/activate", response_model=NodeAdminResponse)
@@ -147,7 +155,7 @@ async def activate(
     await broadcast_state(session)
     await broadcast_peers(session)
     await _on_node_activated(node)
-    return NodeAdminResponse.model_validate(node)
+    return build_node_admin_response(node)
 
 
 @router.delete("/{node_id}/revoke", response_model=NodeAdminResponse)
@@ -160,7 +168,7 @@ async def revoke(
     await broadcast_state(session)
     await broadcast_peers(session)
     await _on_node_removed(node)
-    return NodeAdminResponse.model_validate(node)
+    return build_node_admin_response(node)
 
 
 @router.delete("/{node_id}", status_code=204)
@@ -186,4 +194,4 @@ async def list_nodes(
     _: None = Depends(require_admin),
 ) -> list[NodeAdminResponse]:
     nodes = await node_service.list_all_nodes(session)
-    return [NodeAdminResponse.model_validate(n) for n in nodes]
+    return [build_node_admin_response(n) for n in nodes]

@@ -5,10 +5,21 @@ from fastapi import HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.core.security import issue_hashed_token, verify_token
-from app.db.models import DeviceClaim, DeviceClaimStatus, Node, NodeStatus
+from app.db.models import (
+    DeviceClaim,
+    DeviceClaimStatus,
+    Node,
+    NodeStatus,
+    Site,
+    SitePrefix,
+    TransportKind,
+    TransportLink,
+    TransportStatus,
+)
 from app.schemas.node import NodeRegisterRequest, NodeUpdateRequest
 
 MAX_VPN_IP_ALLOCATION_RETRIES = 3
@@ -32,6 +43,117 @@ async def _allocate_vpn_ip(session: AsyncSession) -> str:
 def _is_vpn_ip_unique_violation(exc: IntegrityError) -> bool:
     message = str(exc.orig).lower() if exc.orig is not None else str(exc).lower()
     return "vpn_ip" in message and ("unique" in message or "duplicate" in message)
+
+
+def _normalize_site_name(name: str | None, fallback: str) -> str:
+    candidate = (name or "").strip()
+    return candidate or fallback
+
+
+async def _get_or_create_site(
+    session: AsyncSession,
+    *,
+    site_name: str,
+) -> Site:
+    result = await session.execute(select(Site).where(Site.name == site_name))
+    site = result.scalar_one_or_none()
+    if site is not None:
+        return site
+    site = Site(name=site_name)
+    session.add(site)
+    await session.flush()
+    return site
+
+
+async def _upsert_primary_site_prefix(
+    session: AsyncSession,
+    *,
+    site: Site,
+    prefix: str | None,
+) -> SitePrefix | None:
+    result = await session.execute(
+        select(SitePrefix)
+        .where(SitePrefix.site_id == site.id)
+        .order_by(SitePrefix.priority, SitePrefix.created_at)
+    )
+    existing = result.scalars().first()
+    normalized = prefix.strip() if prefix else None
+    if normalized is None:
+        if existing is not None:
+            await session.delete(existing)
+        return None
+    if existing is None:
+        created = SitePrefix(site_id=site.id, prefix=normalized, advertise=True, priority=100)
+        session.add(created)
+        await session.flush()
+        return created
+    existing.prefix = normalized
+    existing.advertise = True
+    return existing
+
+
+async def _create_default_transport_link(
+    session: AsyncSession,
+    *,
+    node: Node,
+    endpoint_ip: str | None,
+    endpoint_port: int,
+    reflected_endpoint_ip: str | None,
+) -> TransportLink:
+    link = TransportLink(
+        node_id=node.id,
+        name="wan1",
+        kind=TransportKind.INTERNET,
+        endpoint_ip=endpoint_ip,
+        endpoint_port=endpoint_port,
+        reflected_endpoint_ip=reflected_endpoint_ip,
+        status=TransportStatus.UNKNOWN,
+        is_active=True,
+        priority=100,
+    )
+    session.add(link)
+    await session.flush()
+    return link
+
+
+async def _get_active_transport_link(session: AsyncSession, node_id: str) -> TransportLink | None:
+    result = await session.execute(
+        select(TransportLink)
+        .where(TransportLink.node_id == node_id)
+        .order_by(TransportLink.is_active.desc(), TransportLink.priority.asc(), TransportLink.created_at.asc())
+    )
+    return result.scalars().first()
+
+
+async def sync_node_compat_fields(session: AsyncSession, node: Node) -> Node:
+    active_link = await _get_active_transport_link(session, node.id)
+    primary_prefix = None
+    if node.site_id:
+        prefix_result = await session.execute(
+            select(SitePrefix)
+            .where(SitePrefix.site_id == node.site_id, SitePrefix.advertise.is_(True))
+            .order_by(SitePrefix.priority.asc(), SitePrefix.created_at.asc())
+        )
+        primary_prefix = prefix_result.scalars().first()
+    node.site_subnet = primary_prefix.prefix if primary_prefix is not None else None
+    if active_link is not None:
+        node.endpoint_ip = active_link.endpoint_ip or node.endpoint_ip
+        node.endpoint_port = active_link.endpoint_port or node.endpoint_port
+        node.reflected_endpoint_ip = active_link.reflected_endpoint_ip
+        node.reflected_endpoint_port = active_link.reflected_endpoint_port
+    return node
+
+
+async def get_node_by_id(session: AsyncSession, node_id: str) -> Node | None:
+    result = await session.execute(
+        select(Node)
+        .options(
+            selectinload(Node.site).selectinload(Site.prefixes),
+            selectinload(Node.transport_links),
+        )
+        .where(Node.id == node_id)
+    )
+    return result.scalar_one_or_none()
 
 
 async def register_node(
@@ -84,11 +206,16 @@ async def register_node(
     claim_id = claim_row.id if claim_row else None
     claim_site_subnet = claim_row.site_subnet if claim_row and claim_row.site_subnet else None
     initial_status = NodeStatus.ACTIVE if claim_row else NodeStatus.PENDING
+    site_name = _normalize_site_name(
+        claim_row.site_name if claim_row else None,
+        data.name,
+    )
 
     for attempt in range(1, MAX_VPN_IP_ALLOCATION_RETRIES + 1):
         vpn_ip = await _allocate_vpn_ip(session)
         now = datetime.now(timezone.utc)
         auth_token, auth_token_prefix, auth_token_hash = issue_hashed_token()
+        site = await _get_or_create_site(session, site_name=site_name)
         node = Node(
             name=data.name,
             wireguard_public_key=data.wireguard_public_key,
@@ -101,6 +228,7 @@ async def register_node(
             auth_token_prefix=auth_token_prefix,
             auth_token_issued_at=now,
             device_claim_id=claim_id,
+            site_id=site.id,
             status=initial_status,
             last_seen=now,
             created_at=now,
@@ -113,6 +241,20 @@ async def register_node(
             if _is_vpn_ip_unique_violation(exc) and attempt < MAX_VPN_IP_ALLOCATION_RETRIES:
                 continue
             raise
+
+        await _upsert_primary_site_prefix(
+            session,
+            site=site,
+            prefix=claim_site_subnet or data.site_subnet,
+        )
+        await _create_default_transport_link(
+            session,
+            node=node,
+            endpoint_ip=node.endpoint_ip,
+            endpoint_port=node.endpoint_port,
+            reflected_endpoint_ip=reflected_ip,
+        )
+        await sync_node_compat_fields(session, node)
 
         if claim_id:
             claim_row = await session.get(DeviceClaim, claim_id)
@@ -135,16 +277,74 @@ async def update_heartbeat(
     node: Node,
     request: Request,
     session: AsyncSession,
+    *,
+    transport_links: list[dict] | None = None,
 ) -> Node:
-    node.last_seen = datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc)
+    node.last_seen = now
     if request.client:
         node.reflected_endpoint_ip = request.client.host
+    if transport_links:
+        active_link = await _get_active_transport_link(session, node.id)
+        for report in transport_links:
+            if active_link is None:
+                active_link = await _create_default_transport_link(
+                    session,
+                    node=node,
+                    endpoint_ip=node.endpoint_ip,
+                    endpoint_port=node.endpoint_port,
+                    reflected_endpoint_ip=request.client.host if request.client else None,
+                )
+            active_link.name = report.get("name") or active_link.name
+            kind = report.get("kind")
+            if kind:
+                try:
+                    active_link.kind = TransportKind(kind)
+                except ValueError:
+                    active_link.kind = TransportKind.OTHER
+            active_link.endpoint_ip = report.get("endpoint_ip") or active_link.endpoint_ip
+            active_link.endpoint_port = report.get("endpoint_port") or active_link.endpoint_port
+            active_link.reflected_endpoint_ip = (
+                request.client.host if request.client else active_link.reflected_endpoint_ip
+            )
+            active_link.interface_name = report.get("interface_name") or active_link.interface_name
+            active_link.rtt_ms = report.get("rtt_ms")
+            active_link.jitter_ms = report.get("jitter_ms")
+            active_link.loss_pct = report.get("loss_pct")
+            active_link.status = _transport_status_from_metrics(
+                rtt_ms=active_link.rtt_ms,
+                jitter_ms=active_link.jitter_ms,
+                loss_pct=active_link.loss_pct,
+            )
+            active_link.last_reported_at = now
+            active_link.is_active = True
+            break
     # Auto-recover: an OFFLINE node that heartbeats is back online
     if node.status == NodeStatus.OFFLINE:
         node.status = NodeStatus.ACTIVE
+    await sync_node_compat_fields(session, node)
     await session.commit()
     await session.refresh(node)
     return node
+
+
+def _transport_status_from_metrics(
+    *,
+    rtt_ms: int | None,
+    jitter_ms: int | None,
+    loss_pct: int | None,
+) -> TransportStatus:
+    if loss_pct is not None and loss_pct >= 30:
+        return TransportStatus.DOWN
+    if loss_pct is not None and loss_pct >= 5:
+        return TransportStatus.DEGRADED
+    if jitter_ms is not None and jitter_ms >= 100:
+        return TransportStatus.DEGRADED
+    if rtt_ms is not None and rtt_ms >= 250:
+        return TransportStatus.DEGRADED
+    if rtt_ms is not None or jitter_ms is not None or loss_pct is not None:
+        return TransportStatus.HEALTHY
+    return TransportStatus.UNKNOWN
 
 
 async def expire_stale_nodes(session: AsyncSession, threshold_seconds: int) -> list[Node]:
@@ -176,8 +376,7 @@ async def mark_node_offline(node: Node, session: AsyncSession) -> Node:
 
 
 async def activate_node(node_id: str, session: AsyncSession) -> Node:
-    result = await session.execute(select(Node).where(Node.id == node_id))
-    node = result.scalar_one_or_none()
+    node = await get_node_by_id(session, node_id)
     if not node:
         raise HTTPException(status_code=404, detail="Node not found")
     if node.status != NodeStatus.PENDING:
@@ -193,13 +392,11 @@ async def activate_node(node_id: str, session: AsyncSession) -> Node:
         if claim and claim.status != DeviceClaimStatus.REVOKED:
             claim.status = DeviceClaimStatus.ACTIVE
     await session.commit()
-    await session.refresh(node)
-    return node
+    return await get_node_by_id(session, node_id)
 
 
 async def revoke_node(node_id: str, session: AsyncSession) -> Node:
-    result = await session.execute(select(Node).where(Node.id == node_id))
-    node = result.scalar_one_or_none()
+    node = await get_node_by_id(session, node_id)
     if not node:
         raise HTTPException(status_code=404, detail="Node not found")
     node.status = NodeStatus.REVOKED
@@ -211,8 +408,7 @@ async def revoke_node(node_id: str, session: AsyncSession) -> Node:
         if claim:
             claim.status = DeviceClaimStatus.REVOKED
     await session.commit()
-    await session.refresh(node)
-    return node
+    return await get_node_by_id(session, node_id)
 
 
 async def delete_node(node_id: str, session: AsyncSession) -> None:
@@ -232,18 +428,35 @@ async def delete_node(node_id: str, session: AsyncSession) -> None:
 
 
 async def update_node(node_id: str, data: NodeUpdateRequest, session: AsyncSession) -> Node:
-    result = await session.execute(select(Node).where(Node.id == node_id))
-    node = result.scalar_one_or_none()
+    node = await get_node_by_id(session, node_id)
     if not node:
         raise HTTPException(status_code=404, detail="Node not found")
-    node.site_subnet = data.site_subnet
+    if data.site_name:
+        site = await _get_or_create_site(session, site_name=data.site_name)
+        node.site_id = site.id
+        node.site = site
+    elif node.site is None:
+        site = await _get_or_create_site(session, site_name=node.name)
+        node.site_id = site.id
+        node.site = site
+    if node.site is None and node.site_id:
+        node.site = await session.get(Site, node.site_id)
+    if node.site is not None:
+        await _upsert_primary_site_prefix(session, site=node.site, prefix=data.site_subnet)
+    await sync_node_compat_fields(session, node)
     await session.commit()
-    await session.refresh(node)
-    return node
+    return await get_node_by_id(session, node_id)
 
 
 async def list_all_nodes(session: AsyncSession) -> list[Node]:
-    result = await session.execute(select(Node))
+    result = await session.execute(
+        select(Node)
+        .options(
+            selectinload(Node.site).selectinload(Site.prefixes),
+            selectinload(Node.transport_links),
+        )
+        .order_by(Node.created_at.asc())
+    )
     return list(result.scalars().all())
 
 

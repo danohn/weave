@@ -4,6 +4,7 @@ import { useToast } from '../contexts/ToastContext'
 
 export default function EditSubnetModal({ node, onClose }) {
   const toast  = useToast()
+  const [siteName, setSiteName] = useState(node.site?.name || node.name)
   const [subnet, setSubnet] = useState(node.site_subnet || '')
   const [busy, setBusy] = useState(false)
   const inputRef = useRef(null)
@@ -13,8 +14,11 @@ export default function EditSubnetModal({ node, onClose }) {
   const handleSave = async () => {
     setBusy(true)
     try {
-      await api.patch(`/api/v1/nodes/${node.id}`, { site_subnet: subnet.trim() || null })
-      toast(subnet.trim() ? `Subnet set to ${subnet.trim()}` : 'Subnet cleared')
+      await api.patch(`/api/v1/nodes/${node.id}`, {
+        site_name: siteName.trim() || node.name,
+        site_subnet: subnet.trim() || null,
+      })
+      toast(subnet.trim() ? `Site updated: ${siteName.trim() || node.name} / ${subnet.trim()}` : `Site updated: ${siteName.trim() || node.name}`)
       onClose()
     } catch (err) {
       toast(err.message, 'err')
@@ -26,13 +30,21 @@ export default function EditSubnetModal({ node, onClose }) {
   return (
     <div className="overlay open" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal">
-        <div className="modal-title">Edit Site Subnet</div>
+        <div className="modal-title">Edit Site</div>
         <div className="modal-desc">
-          LAN subnet behind <strong>{node.name}</strong>. Agents will add this to WireGuard
-          AllowedIPs and BGP will advertise it to peers. Clear the field to remove.
+          Manage the logical site attached to <strong>{node.name}</strong>. The primary
+          site prefix is still projected onto the current WireGuard and FRR data plane.
         </div>
         <div className="modal-field">
-          <label>Subnet (CIDR)</label>
+          <label>Site Name</label>
+          <input
+            value={siteName}
+            onChange={e => setSiteName(e.target.value)}
+            placeholder="e.g. Sydney Branch"
+          />
+        </div>
+        <div className="modal-field">
+          <label>Primary Prefix (CIDR)</label>
           <input
             ref={inputRef}
             value={subnet}

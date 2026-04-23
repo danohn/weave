@@ -44,14 +44,14 @@ async def broadcast_state(session: AsyncSession) -> None:
         return
     # Deferred imports to avoid circular dependencies
     from app.schemas.auth import DeviceClaimResponse
-    from app.schemas.node import NodeAdminResponse
+    from app.schemas.node import build_node_admin_response
     from app.services import auth_service, frr_service, node_service
 
     nodes = await node_service.list_all_nodes(session)
     claims = await auth_service.list_claims(session)
     bgp = await frr_service.get_bgp_status()
     payload = {
-        "nodes": [NodeAdminResponse.model_validate(n).model_dump(mode="json") for n in nodes],
+        "nodes": [build_node_admin_response(n).model_dump(mode="json") for n in nodes],
         "claims": [DeviceClaimResponse.model_validate(c).model_dump(mode="json") for c in claims],
         "bgp": bgp,
     }

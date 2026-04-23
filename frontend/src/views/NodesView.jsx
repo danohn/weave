@@ -28,6 +28,19 @@ function BgpBadge({ info }) {
   return <span className={`badge ${cls}`}><span className="badge-pip" />{label}</span>
 }
 
+function TransportBadge({ transport }) {
+  if (!transport) {
+    return <span className="badge badge-bgp-unknown"><span className="badge-pip" />—</span>
+  }
+  const label = `${transport.kind} / ${transport.status}`
+  const cls = transport.status === 'HEALTHY'
+    ? 'badge-bgp-established'
+    : transport.status === 'DEGRADED'
+      ? 'badge-bgp-active'
+      : 'badge-bgp-unknown'
+  return <span className={`badge ${cls}`}><span className="badge-pip" />{label}</span>
+}
+
 export default function NodesView() {
   const { nodes, bgp, lastUpdated } = useData()
   const confirm = useConfirm()
@@ -113,15 +126,17 @@ export default function NodesView() {
               <th>Status</th>
               <th>BGP</th>
               <th>VPN IP</th>
+              <th>Site</th>
               <th>Endpoint</th>
-              <th>Site Subnet</th>
+              <th>Prefix</th>
+              <th>Transport</th>
               <th>Last seen</th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody>
             {sorted.length === 0 ? (
-              <tr><td colSpan={8}><div className="placeholder">No nodes registered yet</div></td></tr>
+              <tr><td colSpan={10}><div className="placeholder">No nodes registered yet</div></td></tr>
             ) : sorted.map(n => {
               const bgpInfo    = bgp[n.vpn_ip]
               const advertised = bgpInfo && bgpInfo.prefixes_received > 0
@@ -131,6 +146,14 @@ export default function NodesView() {
                   <td><Badge status={n.status} /></td>
                   <td><BgpBadge info={bgpInfo} /></td>
                   <td className="td-mono">{n.vpn_ip}</td>
+                  <td>
+                    {n.site ? (
+                      <>
+                        <div>{n.site.name}</div>
+                        <div className="table-subtext">{n.site.prefixes?.length || 0} prefix{(n.site.prefixes?.length || 0) === 1 ? '' : 'es'}</div>
+                      </>
+                    ) : <span className="td-empty">—</span>}
+                  </td>
                   <td className="td-mono">{n.endpoint_ip}:{n.endpoint_port}</td>
                   <td className="td-subnet">
                     {n.site_subnet ? (
@@ -147,6 +170,16 @@ export default function NodesView() {
                         <span className="td-empty">—</span>{' '}
                         <button className="edit-btn" onClick={() => setSubnetNode(n)}>Set</button>
                       </>
+                    )}
+                  </td>
+                  <td>
+                    <TransportBadge transport={n.active_transport} />
+                    {n.active_transport && (
+                      <div className="table-subtext">
+                        {n.active_transport.name}
+                        {n.active_transport.rtt_ms != null ? ` · ${n.active_transport.rtt_ms}ms` : ''}
+                        {n.active_transport.loss_pct != null ? ` · ${n.active_transport.loss_pct}% loss` : ''}
+                      </div>
                     )}
                   </td>
                   <td className={tsAgeClass(n.last_seen)}>{relTime(n.last_seen)}</td>

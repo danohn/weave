@@ -365,6 +365,11 @@ td.td-mono {
 }
 
 .td-empty { color: var(--gray-300); }
+.table-subtext {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--gray-400);
+}
 
 .edit-btn {
   height: 20px;

@@ -26,3 +26,5 @@ class Settings(BaseSettings):
 
     CLAIM_TOKEN: str | None = None
     PREAUTH_TOKEN: str | None = None
+    TRANSPORT_NAME: str = "wan1"
+    TRANSPORT_KIND: str = "internet"
