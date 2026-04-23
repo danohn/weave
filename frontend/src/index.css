@@ -107,7 +107,7 @@ header {
   border-right: 1px solid var(--gray-200);
   padding: 10px 0;
   background: var(--white);
-  overflow-y: auto;
+  overflow: hidden;
 }
 
 .nav-item {
