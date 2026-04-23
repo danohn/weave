@@ -31,15 +31,17 @@ class AgentConnectionManager:
         if not ws:
             return
         try:
-            from app.schemas.node import PeerResponse
-            from app.services.peer_service import get_peers
+            from app.services.peer_service import get_overlay_config
 
             result = await session.execute(select(Node).where(Node.id == node_id))
             node = result.scalar_one_or_none()
             if not node:
                 return
-            peers = await get_peers(node, session)
-            payload = {"peers": [p.model_dump(mode="json") for p in peers]}
+            overlay = await get_overlay_config(node, session)
+            payload = {
+                "peers": [p.model_dump(mode="json") for p in overlay.peers],
+                "transports": [t.model_dump(mode="json") for t in overlay.transports],
+            }
             await ws.send_json(payload)
         except Exception as exc:
             # WS is already closed — clean up the stale entry silently

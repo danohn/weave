@@ -10,8 +10,7 @@ import asyncio
 import json
 import logging
 
-from app.core.config import settings
-from app.db.models import Node
+from app.db.models import Node, TransportLink
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +60,15 @@ async def get_bgp_status() -> dict[str, dict]:
         return {}
 
 
-async def add_bfd_peer(node: Node) -> None:
+def _route_map_name(link: TransportLink) -> str:
+    return f"WEAVE-IN-{link.kind.value.upper()}-{link.node_id[:8]}"
+
+
+def _local_pref_for_priority(priority: int) -> int:
+    return max(50, 500 - priority)
+
+
+async def add_bfd_peer(link: TransportLink, node_name: str) -> None:
     """Pre-register a BFD peer on the route reflector.
 
     By explicitly creating the BFD session before BGP connects, bfdd can
@@ -73,86 +80,105 @@ async def add_bfd_peer(node: Node) -> None:
         await _vtysh(
             "configure terminal",
             "bfd",
-            f"peer {node.vpn_ip} multihop local-address {settings.CONTROLLER_VPN_IP}",
+            f"peer {link.overlay_vpn_ip} multihop local-address {link.controller_vpn_ip}",
             "end",
             "write memory",
         )
-        logger.info("BFD: registered peer %s (%s)", node.name, node.vpn_ip)
+        logger.info("BFD: registered peer %s/%s (%s)", node_name, link.kind.value, link.overlay_vpn_ip)
     except Exception as exc:
-        logger.warning("BFD: could not register peer %s: %s", node.name, exc)
+        logger.warning("BFD: could not register peer %s/%s: %s", node_name, link.kind.value, exc)
 
 
-async def remove_bfd_peer(node: Node) -> None:
+async def remove_bfd_peer(link: TransportLink, node_name: str) -> None:
     """Remove a node's BFD peer entry from the route reflector."""
     try:
         await _vtysh(
             "configure terminal",
             "bfd",
-            f"no peer {node.vpn_ip} multihop local-address {settings.CONTROLLER_VPN_IP}",
+            f"no peer {link.overlay_vpn_ip} multihop local-address {link.controller_vpn_ip}",
             "end",
             "write memory",
         )
-        logger.info("BFD: removed peer %s (%s)", node.name, node.vpn_ip)
+        logger.info("BFD: removed peer %s/%s (%s)", node_name, link.kind.value, link.overlay_vpn_ip)
     except Exception as exc:
-        logger.warning("BFD: could not remove peer %s: %s", node.name, exc)
+        logger.warning("BFD: could not remove peer %s/%s: %s", node_name, link.kind.value, exc)
 
 
-async def add_neighbor(node: Node) -> None:
-    """Add a node as a BGP neighbor on the route reflector."""
+async def add_neighbor(link: TransportLink, node_name: str) -> None:
+    """Add a transport link as a BGP neighbor on the route reflector."""
+    route_map = _route_map_name(link)
+    local_pref = _local_pref_for_priority(link.priority)
     try:
         await _vtysh(
             "configure terminal",
             f"router bgp {BGP_ASN}",
-            f"neighbor {node.vpn_ip} peer-group NODES",
+            f"neighbor {link.overlay_vpn_ip} peer-group NODES",
+            f"neighbor {link.overlay_vpn_ip} route-map {route_map} in",
+            f"route-map {route_map} permit 10",
+            f"set local-preference {local_pref}",
             "end",
             "write memory",
         )
-        logger.info("BGP: added neighbor %s (%s)", node.name, node.vpn_ip)
+        logger.info("BGP: added neighbor %s/%s (%s)", node_name, link.kind.value, link.overlay_vpn_ip)
     except Exception as exc:
-        logger.warning("BGP: could not add neighbor %s: %s", node.name, exc)
+        logger.warning("BGP: could not add neighbor %s/%s: %s", node_name, link.kind.value, exc)
 
 
-async def remove_neighbor(node: Node) -> None:
-    """Remove a node's BGP neighbor entry from the route reflector."""
+async def remove_neighbor(link: TransportLink, node_name: str) -> None:
+    """Remove a transport link's BGP neighbor entry from the route reflector."""
+    route_map = _route_map_name(link)
     try:
         await _vtysh(
             "configure terminal",
             f"router bgp {BGP_ASN}",
-            f"no neighbor {node.vpn_ip}",
+            f"no neighbor {link.overlay_vpn_ip}",
+            f"no route-map {route_map} permit 10",
             "end",
             "write memory",
         )
-        logger.info("BGP: removed neighbor %s (%s)", node.name, node.vpn_ip)
+        logger.info("BGP: removed neighbor %s/%s (%s)", node_name, link.kind.value, link.overlay_vpn_ip)
     except Exception as exc:
-        logger.warning("BGP: could not remove neighbor %s: %s", node.name, exc)
+        logger.warning("BGP: could not remove neighbor %s/%s: %s", node_name, link.kind.value, exc)
 
 
 def generate_node_config(node: Node) -> str:
     """Generate the FRR config for an edge node (fetched via GET /frr-config)."""
+    active_links = sorted(
+        [link for link in node.transport_links if link.wireguard_public_key and link.overlay_vpn_ip and link.controller_vpn_ip],
+        key=lambda item: (item.priority, item.kind.value),
+    )
+    router_id = active_links[0].overlay_vpn_ip if active_links else node.vpn_ip
     lines = [
         "frr defaults traditional",
         f"hostname {node.name}",
         "log syslog informational",
         "!",
-        # Pre-register the BFD session explicitly so bfdd can establish the
-        # handshake with the controller before bgpd tries to connect.
-        # This avoids the Idle deadlock caused by bgpd waiting for BFD=Up
-        # when BFD hasn't yet been negotiated.
         "bfd",
-        f" peer {settings.CONTROLLER_VPN_IP} multihop local-address {node.vpn_ip}",
-        "!",
+    ]
+    for link in active_links:
+        lines += [
+            f" peer {link.controller_vpn_ip} multihop local-address {link.overlay_vpn_ip}",
+            " !",
+        ]
+    lines += [
         f"router bgp {BGP_ASN}",
-        f" bgp router-id {node.vpn_ip}",
+        f" bgp router-id {router_id}",
         " no bgp default ipv4-unicast",
         " !",
-        f" neighbor {settings.CONTROLLER_VPN_IP} remote-as {BGP_ASN}",
-        f" neighbor {settings.CONTROLLER_VPN_IP} update-source wg0",
-        f" neighbor {settings.CONTROLLER_VPN_IP} bfd",
-        " !",
-        " address-family ipv4 unicast",
-        f"  neighbor {settings.CONTROLLER_VPN_IP} activate",
-        f"  neighbor {settings.CONTROLLER_VPN_IP} soft-reconfiguration inbound",
     ]
+    for link in active_links:
+        lines += [
+            f" neighbor {link.controller_vpn_ip} remote-as {BGP_ASN}",
+            f" neighbor {link.controller_vpn_ip} update-source {link.interface_name or 'wg0'}",
+            f" neighbor {link.controller_vpn_ip} bfd",
+            " !",
+        ]
+    lines += [
+        " address-family ipv4 unicast",
+    ]
+    for link in active_links:
+        lines.append(f"  neighbor {link.controller_vpn_ip} activate")
+        lines.append(f"  neighbor {link.controller_vpn_ip} soft-reconfiguration inbound")
     if node.site_subnet:
         lines.append(f"  network {node.site_subnet}")
     lines += [

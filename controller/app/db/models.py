@@ -163,6 +163,13 @@ class TransportLink(Base):
     admin_state_up: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     endpoint_ip: Mapped[str | None] = mapped_column(String, nullable=True)
     endpoint_port: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    wireguard_public_key: Mapped[str | None] = mapped_column(
+        String, nullable=True, unique=True, index=True
+    )
+    overlay_vpn_ip: Mapped[str | None] = mapped_column(
+        String, nullable=True, unique=True, index=True
+    )
+    controller_vpn_ip: Mapped[str | None] = mapped_column(String, nullable=True)
     reflected_endpoint_ip: Mapped[str | None] = mapped_column(String, nullable=True)
     reflected_endpoint_port: Mapped[int | None] = mapped_column(Integer, nullable=True)
     rtt_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)

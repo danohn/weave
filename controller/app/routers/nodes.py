@@ -16,24 +16,41 @@ from app.schemas.node import (
     NodeRegisterResponse,
     NodeTokenRotateResponse,
     NodeUpdateRequest,
+    OverlayConfigResponse,
 )
-from app.services import frr_service, node_service, wireguard_service
+from app.services import frr_service, node_service, peer_service, wireguard_service
 
 router = APIRouter(prefix="/api/v1/nodes", tags=["nodes"])
 
 
 async def _on_node_activated(node: Node) -> None:
     """Add the node to the controller's WireGuard, BFD, and BGP config."""
-    await wireguard_service.add_peer(node)
-    await frr_service.add_bfd_peer(node)   # must precede add_neighbor so BFD
-    await frr_service.add_neighbor(node)   # is Up before bgpd checks it
+    links = sorted(
+        [link for link in getattr(node, "transport_links", []) if link.wireguard_public_key and link.overlay_vpn_ip],
+        key=lambda item: (item.priority, item.kind.value),
+    )
+    if not links:
+        await wireguard_service.add_peer(node)
+        return
+    for link in links:
+        await wireguard_service.add_transport_peer(link, node_name=node.name, site_subnet=node.site_subnet)
+        await frr_service.add_bfd_peer(link, node.name)
+        await frr_service.add_neighbor(link, node.name)
 
 
 async def _on_node_removed(node: Node) -> None:
     """Remove the node from the controller's WireGuard, BFD, and BGP config."""
-    await wireguard_service.remove_peer(node)
-    await frr_service.remove_neighbor(node)
-    await frr_service.remove_bfd_peer(node)
+    links = sorted(
+        [link for link in getattr(node, "transport_links", []) if link.wireguard_public_key and link.overlay_vpn_ip],
+        key=lambda item: (item.priority, item.kind.value),
+    )
+    if not links:
+        await wireguard_service.remove_peer(node)
+        return
+    for link in links:
+        await wireguard_service.remove_transport_peer(link, node_name=node.name)
+        await frr_service.remove_neighbor(link, node.name)
+        await frr_service.remove_bfd_peer(link, node.name)
 
 
 @router.post("/register", response_model=NodeRegisterResponse, status_code=201)
@@ -79,8 +96,7 @@ async def heartbeat(
     # Update the WG peer endpoint when a node recovers from OFFLINE — its
     # reflected IP may have changed while it was unreachable.
     if was_offline and node.status == NodeStatus.ACTIVE:
-        await wireguard_service.add_peer(node)
-        await frr_service.add_neighbor(node)
+        await _on_node_activated(node)
     return HeartbeatResponse(status=node.status, last_seen=node.last_seen)
 
 
@@ -94,8 +110,12 @@ async def go_offline(
     if str(current_node.id) != node_id:
         raise HTTPException(status_code=403, detail="Token does not match node")
     if current_node.status == NodeStatus.ACTIVE:
-        await node_service.mark_node_offline(current_node, session)
-        await frr_service.remove_neighbor(current_node)
+        node = await node_service.get_node_by_id(session, current_node.id)
+        if node is None:
+            raise HTTPException(status_code=404, detail="Node not found")
+        await node_service.mark_node_offline(node, session)
+        for link in node.transport_links:
+            await frr_service.remove_neighbor(link, node.name)
         await broadcast_state(session)
         await broadcast_peers(session)
 
@@ -118,6 +138,7 @@ async def rotate_token(
 async def frr_config(
     node_id: str,
     current_node: Node = Depends(get_current_node),
+    session: AsyncSession = Depends(get_session),
 ) -> str:
     """Return the FRR BGP config for this node as plain text.
 
@@ -125,7 +146,24 @@ async def frr_config(
     """
     if str(current_node.id) != node_id:
         raise HTTPException(status_code=403, detail="Token does not match node")
-    return frr_service.generate_node_config(current_node)
+    node = await node_service.get_node_by_id(session, current_node.id)
+    if node is None:
+        raise HTTPException(status_code=404, detail="Node not found")
+    return frr_service.generate_node_config(node)
+
+
+@router.get("/{node_id}/overlay-config", response_model=OverlayConfigResponse)
+async def overlay_config(
+    node_id: str,
+    current_node: Node = Depends(get_current_node),
+    session: AsyncSession = Depends(get_session),
+) -> OverlayConfigResponse:
+    if str(current_node.id) != node_id:
+        raise HTTPException(status_code=403, detail="Token does not match node")
+    node = await node_service.get_node_by_id(session, current_node.id)
+    if node is None:
+        raise HTTPException(status_code=404, detail="Node not found")
+    return await peer_service.get_overlay_config(node, session)
 
 
 @router.patch("/{node_id}", response_model=NodeAdminResponse)
@@ -137,9 +175,8 @@ async def update_node(
 ) -> NodeAdminResponse:
     """Update editable node fields (currently: site_subnet)."""
     node = await node_service.update_node(node_id, data, session)
-    # Re-apply WireGuard peer so AllowedIPs reflects the new site_subnet
     if node.status in (NodeStatus.ACTIVE, NodeStatus.OFFLINE):
-        await wireguard_service.add_peer(node)
+        await _on_node_activated(node)
     await broadcast_peers(session)
     await broadcast_state(session)
     return build_node_admin_response(node)

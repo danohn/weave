@@ -9,6 +9,7 @@ from app.db.models import NodeStatus, TransportKind, TransportStatus
 class TransportLinkHeartbeatReport(BaseModel):
     name: str = "wan1"
     kind: TransportKind = TransportKind.INTERNET
+    wireguard_public_key: Optional[str] = None
     endpoint_ip: Optional[str] = None
     endpoint_port: Optional[int] = None
     interface_name: Optional[str] = None
@@ -40,6 +41,9 @@ class TransportLinkResponse(BaseModel):
     id: str
     name: str
     kind: TransportKind
+    wireguard_public_key: Optional[str] = None
+    overlay_vpn_ip: Optional[str] = None
+    controller_vpn_ip: Optional[str] = None
     endpoint_ip: Optional[str] = None
     endpoint_port: Optional[int] = None
     reflected_endpoint_ip: Optional[str] = None
@@ -86,6 +90,7 @@ class PeerResponse(BaseModel):
     name: str
     wireguard_public_key: str
     vpn_ip: str
+    overlay_vpn_ip: Optional[str] = None
     preferred_endpoint: str
     endpoint_port: int
     nat_detected: bool
@@ -94,6 +99,23 @@ class PeerResponse(BaseModel):
     site_name: Optional[str] = None
     transport_link_id: Optional[str] = None
     transport_kind: Optional[TransportKind] = None
+
+
+class OverlayTransportConfig(BaseModel):
+    interface_name: str
+    name: str
+    kind: TransportKind
+    wireguard_public_key: str
+    overlay_vpn_ip: str
+    controller_vpn_ip: str
+    endpoint_port: int
+    priority: int
+    is_active: bool
+
+
+class OverlayConfigResponse(BaseModel):
+    transports: list[OverlayTransportConfig] = Field(default_factory=list)
+    peers: list[PeerResponse] = Field(default_factory=list)
 
 
 class NodeUpdateRequest(BaseModel):
@@ -148,6 +170,9 @@ def build_node_admin_response(node) -> NodeAdminResponse:
             id=link.id,
             name=link.name,
             kind=link.kind,
+            wireguard_public_key=link.wireguard_public_key,
+            overlay_vpn_ip=link.overlay_vpn_ip,
+            controller_vpn_ip=link.controller_vpn_ip,
             endpoint_ip=link.endpoint_ip,
             endpoint_port=link.endpoint_port,
             reflected_endpoint_ip=link.reflected_endpoint_ip,

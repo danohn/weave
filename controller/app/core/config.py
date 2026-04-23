@@ -1,4 +1,5 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
+import ipaddress
 
 
 class Settings(BaseSettings):
@@ -36,6 +37,9 @@ class Settings(BaseSettings):
     # Domain agents already use to reach the controller — reused as the
     # WireGuard endpoint hostname so no separate IP config is needed.
     WEAVE_DOMAIN: str = ""
+    TRANSPORT_OVERLAY_SUBNETS: str = (
+        "internet=10.0.0.0/24,mpls=10.0.1.0/24,lte=10.0.2.0/24,other=10.0.3.0/24"
+    )
 
     @property
     def session_cookie_secure(self) -> bool:
@@ -45,3 +49,19 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+
+def transport_overlay_subnets() -> dict[str, str]:
+    mapping: dict[str, str] = {}
+    for item in settings.TRANSPORT_OVERLAY_SUBNETS.split(","):
+        if "=" not in item:
+            continue
+        kind, subnet = item.split("=", 1)
+        mapping[kind.strip()] = subnet.strip()
+    return mapping
+
+
+def controller_overlay_ip_for_kind(kind: str) -> str:
+    subnet = transport_overlay_subnets()[kind]
+    network = ipaddress.ip_network(subnet, strict=False)
+    return str(list(network.hosts())[-1])

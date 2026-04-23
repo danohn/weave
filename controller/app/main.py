@@ -14,13 +14,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select
 from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.core.config import settings
 from app.core.agent_ws import broadcast_peers
 from app.core.websocket import broadcast_state
 from app.db.base import AsyncSessionLocal, Base, engine, get_session
-from app.db.models import Node, NodeStatus
+from app.db.models import Node, NodeStatus, Site, TransportLink
 from app.routers import agent_ws, auth, auth_web, bgp, nodes, peers, ws
 from app.services import frr_service, node_service, wireguard_service
 
@@ -39,7 +40,8 @@ async def _expiry_loop() -> None:
                 if stale:
                     logger.info("Marked %d node(s) OFFLINE (no heartbeat)", len(stale))
                     for node in stale:
-                        await frr_service.remove_neighbor(node)
+                        for link in node.transport_links:
+                            await frr_service.remove_neighbor(link, node.name)
                     await broadcast_state(session)
                     await broadcast_peers(session)
         except Exception:
@@ -56,7 +58,12 @@ async def lifespan(app: FastAPI):
     # automatically when they come back; revoked/pending nodes are excluded.
     async with AsyncSessionLocal() as session:
         result = await session.execute(
-            select(Node).where(
+            select(Node)
+            .options(
+                selectinload(Node.transport_links),
+                selectinload(Node.site).selectinload(Site.prefixes),
+            )
+            .where(
                 Node.status.in_([NodeStatus.ACTIVE, NodeStatus.OFFLINE])
             )
         )
@@ -66,8 +73,12 @@ async def lifespan(app: FastAPI):
         logger.info("Syncing %d node(s) to WireGuard and FRR on startup", len(existing_nodes))
         await wireguard_service.sync_peers(existing_nodes)
         for node in existing_nodes:
-            await frr_service.add_bfd_peer(node)   # register BFD before BGP
-            await frr_service.add_neighbor(node)
+            for link in sorted(
+                [item for item in node.transport_links if item.wireguard_public_key and item.overlay_vpn_ip],
+                key=lambda item: (item.priority, item.kind.value),
+            ):
+                await frr_service.add_bfd_peer(link, node.name)
+                await frr_service.add_neighbor(link, node.name)
 
     task = asyncio.create_task(_expiry_loop())
     yield

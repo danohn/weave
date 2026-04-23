@@ -21,6 +21,7 @@ class HeartbeatResponse:
 class TransportLinkHeartbeat:
     name: str = "wan1"
     kind: str = "internet"
+    wireguard_public_key: str | None = None
     endpoint_ip: str | None = None
     endpoint_port: int | None = None
     interface_name: str | None = None
@@ -34,6 +35,7 @@ class Peer:
     name: str
     wireguard_public_key: str
     vpn_ip: str
+    overlay_vpn_ip: str | None = None
     preferred_endpoint: str
     endpoint_port: int
     site_subnet: str | None = None
@@ -41,6 +43,25 @@ class Peer:
     site_name: str | None = None
     transport_link_id: str | None = None
     transport_kind: str | None = None
+
+
+@dataclass
+class OverlayTransport:
+    interface_name: str
+    name: str
+    kind: str
+    wireguard_public_key: str
+    overlay_vpn_ip: str
+    controller_vpn_ip: str
+    endpoint_port: int
+    priority: int
+    is_active: bool
+
+
+@dataclass
+class OverlayConfig:
+    transports: list[OverlayTransport]
+    peers: list[Peer]
 
 
 def parse_peer(data: dict) -> Peer:
@@ -51,6 +72,18 @@ def parse_peer(data: dict) -> Peer:
 def parse_register_response(data: dict) -> RegisterResponse:
     known = {field for field in RegisterResponse.__dataclass_fields__}
     return RegisterResponse(**{k: v for k, v in data.items() if k in known})
+
+
+def parse_overlay_transport(data: dict) -> OverlayTransport:
+    known = {field for field in OverlayTransport.__dataclass_fields__}
+    return OverlayTransport(**{k: v for k, v in data.items() if k in known})
+
+
+def parse_overlay_config(data: dict) -> OverlayConfig:
+    return OverlayConfig(
+        transports=[parse_overlay_transport(item) for item in data.get("transports", [])],
+        peers=[parse_peer(item) for item in data.get("peers", [])],
+    )
 
 
 class ControllerClient:
@@ -150,3 +183,11 @@ class ControllerClient:
         )
         resp.raise_for_status()
         return resp.text
+
+    async def get_overlay_config(self, node_id: str, token: str) -> OverlayConfig:
+        resp = await self._client.get(
+            f"{self._base}/api/v1/nodes/{node_id}/overlay-config",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        resp.raise_for_status()
+        return parse_overlay_config(resp.json())

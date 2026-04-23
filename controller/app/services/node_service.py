@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 
-from app.core.config import settings
+from app.core.config import controller_overlay_ip_for_kind, settings, transport_overlay_subnets
 from app.core.security import issue_hashed_token, verify_token
 from app.db.models import (
     DeviceClaim,
@@ -37,6 +37,29 @@ async def _allocate_vpn_ip(session: AsyncSession) -> str:
     raise HTTPException(
         status_code=503,
         detail=f"VPN address space exhausted ({settings.VPN_SUBNET})",
+    )
+
+
+async def _allocate_transport_overlay_ip(session: AsyncSession, kind: TransportKind) -> str:
+    subnets = transport_overlay_subnets()
+    subnet = subnets.get(kind.value, subnets["other"])
+    network = ipaddress.ip_network(subnet, strict=False)
+    result = await session.execute(select(TransportLink.overlay_vpn_ip))
+    used = {
+        row[0]
+        for row in result.all()
+        if row[0] and ipaddress.ip_address(row[0]) in network
+    }
+    controller_ip = controller_overlay_ip_for_kind(kind.value if kind.value in subnets else "other")
+    for host in network.hosts():
+        ip_str = str(host)
+        if ip_str == controller_ip:
+            continue
+        if ip_str not in used:
+            return ip_str
+    raise HTTPException(
+        status_code=503,
+        detail=f"Transport address space exhausted for {kind.value} ({subnet})",
     )
 
 
@@ -99,17 +122,26 @@ async def _create_default_transport_link(
     endpoint_ip: str | None,
     endpoint_port: int,
     reflected_endpoint_ip: str | None,
+    wireguard_public_key: str | None = None,
+    overlay_vpn_ip: str | None = None,
 ) -> TransportLink:
+    assigned_overlay_ip = overlay_vpn_ip or await _allocate_transport_overlay_ip(
+        session, TransportKind.INTERNET
+    )
     link = TransportLink(
         node_id=node.id,
         name="wan1",
         kind=TransportKind.INTERNET,
+        wireguard_public_key=wireguard_public_key or node.wireguard_public_key,
+        overlay_vpn_ip=assigned_overlay_ip,
+        controller_vpn_ip=controller_overlay_ip_for_kind(TransportKind.INTERNET.value),
         endpoint_ip=endpoint_ip,
         endpoint_port=endpoint_port,
         reflected_endpoint_ip=reflected_endpoint_ip,
         status=TransportStatus.UNKNOWN,
         is_active=True,
         priority=100,
+        interface_name="wg0",
     )
     session.add(link)
     await session.flush()
@@ -125,6 +157,90 @@ async def _get_active_transport_link(session: AsyncSession, node_id: str) -> Tra
     return result.scalars().first()
 
 
+def _interface_name_for_kind(kind: TransportKind) -> str:
+    return "wg0" if kind == TransportKind.INTERNET else f"wg-{kind.value}"
+
+
+def _priority_for_kind(kind: TransportKind) -> int:
+    priorities = {
+        TransportKind.MPLS: 50,
+        TransportKind.INTERNET: 100,
+        TransportKind.LTE: 200,
+        TransportKind.OTHER: 300,
+    }
+    return priorities.get(kind, 300)
+
+
+async def _upsert_transport_link_report(
+    session: AsyncSession,
+    *,
+    node: Node,
+    report: dict,
+    reflected_endpoint_ip: str | None,
+    reported_at: datetime,
+) -> TransportLink:
+    kind_raw = report.get("kind")
+    try:
+        kind = TransportKind(kind_raw) if kind_raw else TransportKind.INTERNET
+    except ValueError:
+        kind = TransportKind.OTHER
+    name = report.get("name") or ("wan1" if kind == TransportKind.INTERNET else kind.value)
+    result = await session.execute(
+        select(TransportLink).where(TransportLink.node_id == node.id, TransportLink.kind == kind)
+    )
+    link = result.scalar_one_or_none()
+    if link is None:
+        link = TransportLink(
+            node_id=node.id,
+            name=name,
+            kind=kind,
+            priority=_priority_for_kind(kind),
+            interface_name=report.get("interface_name") or _interface_name_for_kind(kind),
+            overlay_vpn_ip=await _allocate_transport_overlay_ip(session, kind),
+            controller_vpn_ip=controller_overlay_ip_for_kind(kind.value),
+            status=TransportStatus.UNKNOWN,
+            is_active=False,
+        )
+        session.add(link)
+        await session.flush()
+
+    link.name = name
+    link.interface_name = report.get("interface_name") or link.interface_name or _interface_name_for_kind(kind)
+    link.endpoint_ip = report.get("endpoint_ip") or link.endpoint_ip or node.endpoint_ip
+    link.endpoint_port = report.get("endpoint_port") or link.endpoint_port or node.endpoint_port
+    link.reflected_endpoint_ip = reflected_endpoint_ip or link.reflected_endpoint_ip
+    link.wireguard_public_key = report.get("wireguard_public_key") or link.wireguard_public_key
+    link.rtt_ms = report.get("rtt_ms")
+    link.jitter_ms = report.get("jitter_ms")
+    link.loss_pct = report.get("loss_pct")
+    link.status = _transport_status_from_metrics(
+        rtt_ms=link.rtt_ms,
+        jitter_ms=link.jitter_ms,
+        loss_pct=link.loss_pct,
+    )
+    link.last_reported_at = reported_at
+    return link
+
+
+def select_active_transport_links(links: list[TransportLink]) -> list[TransportLink]:
+    by_kind: dict[TransportKind, list[TransportLink]] = {}
+    for link in links:
+        if not link.admin_state_up or link.overlay_vpn_ip is None:
+            link.is_active = False
+            continue
+        by_kind.setdefault(link.kind, []).append(link)
+
+    ordered = sorted(
+        [max(group, key=lambda item: (item.status != TransportStatus.DOWN, -item.priority, item.created_at.timestamp() if item.created_at else 0)) for group in by_kind.values()],
+        key=lambda item: (item.status == TransportStatus.DOWN, item.priority, item.created_at or datetime.now(timezone.utc)),
+    )
+    for link in links:
+        link.is_active = False
+    if ordered:
+        ordered[0].is_active = True
+    return ordered
+
+
 async def sync_node_compat_fields(session: AsyncSession, node: Node) -> Node:
     active_link = await _get_active_transport_link(session, node.id)
     primary_prefix = None
@@ -137,6 +253,7 @@ async def sync_node_compat_fields(session: AsyncSession, node: Node) -> Node:
         primary_prefix = prefix_result.scalars().first()
     node.site_subnet = primary_prefix.prefix if primary_prefix is not None else None
     if active_link is not None:
+        node.vpn_ip = active_link.overlay_vpn_ip or node.vpn_ip
         node.endpoint_ip = active_link.endpoint_ip or node.endpoint_ip
         node.endpoint_port = active_link.endpoint_port or node.endpoint_port
         node.reflected_endpoint_ip = active_link.reflected_endpoint_ip
@@ -253,6 +370,8 @@ async def register_node(
             endpoint_ip=node.endpoint_ip,
             endpoint_port=node.endpoint_port,
             reflected_endpoint_ip=reflected_ip,
+            wireguard_public_key=node.wireguard_public_key,
+            overlay_vpn_ip=node.vpn_ip,
         )
         await sync_node_compat_fields(session, node)
 
@@ -267,8 +386,7 @@ async def register_node(
             )
 
         await session.commit()
-        await session.refresh(node)
-        return node, auth_token
+        return await get_node_by_id(session, node.id), auth_token
 
     raise HTTPException(status_code=503, detail="Could not allocate a unique VPN IP")
 
@@ -285,47 +403,24 @@ async def update_heartbeat(
     if request.client:
         node.reflected_endpoint_ip = request.client.host
     if transport_links:
-        active_link = await _get_active_transport_link(session, node.id)
         for report in transport_links:
-            if active_link is None:
-                active_link = await _create_default_transport_link(
-                    session,
-                    node=node,
-                    endpoint_ip=node.endpoint_ip,
-                    endpoint_port=node.endpoint_port,
-                    reflected_endpoint_ip=request.client.host if request.client else None,
-                )
-            active_link.name = report.get("name") or active_link.name
-            kind = report.get("kind")
-            if kind:
-                try:
-                    active_link.kind = TransportKind(kind)
-                except ValueError:
-                    active_link.kind = TransportKind.OTHER
-            active_link.endpoint_ip = report.get("endpoint_ip") or active_link.endpoint_ip
-            active_link.endpoint_port = report.get("endpoint_port") or active_link.endpoint_port
-            active_link.reflected_endpoint_ip = (
-                request.client.host if request.client else active_link.reflected_endpoint_ip
+            await _upsert_transport_link_report(
+                session,
+                node=node,
+                report=report,
+                reflected_endpoint_ip=request.client.host if request.client else None,
+                reported_at=now,
             )
-            active_link.interface_name = report.get("interface_name") or active_link.interface_name
-            active_link.rtt_ms = report.get("rtt_ms")
-            active_link.jitter_ms = report.get("jitter_ms")
-            active_link.loss_pct = report.get("loss_pct")
-            active_link.status = _transport_status_from_metrics(
-                rtt_ms=active_link.rtt_ms,
-                jitter_ms=active_link.jitter_ms,
-                loss_pct=active_link.loss_pct,
-            )
-            active_link.last_reported_at = now
-            active_link.is_active = True
-            break
+        result = await session.execute(
+            select(TransportLink).where(TransportLink.node_id == node.id)
+        )
+        select_active_transport_links(list(result.scalars().all()))
     # Auto-recover: an OFFLINE node that heartbeats is back online
     if node.status == NodeStatus.OFFLINE:
         node.status = NodeStatus.ACTIVE
     await sync_node_compat_fields(session, node)
     await session.commit()
-    await session.refresh(node)
-    return node
+    return await get_node_by_id(session, node.id)
 
 
 def _transport_status_from_metrics(
@@ -354,7 +449,9 @@ async def expire_stale_nodes(session: AsyncSession, threshold_seconds: int) -> l
     """
     cutoff = datetime.now(timezone.utc) - timedelta(seconds=threshold_seconds)
     result = await session.execute(
-        select(Node).where(
+        select(Node)
+        .options(selectinload(Node.transport_links))
+        .where(
             Node.status == NodeStatus.ACTIVE,
             Node.last_seen < cutoff,
         )

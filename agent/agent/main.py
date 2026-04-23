@@ -1,4 +1,5 @@
 import asyncio
+from collections import defaultdict
 import json
 import logging
 import signal
@@ -6,8 +7,15 @@ import sys
 
 from agent import frr
 from agent import wireguard as wg
-from agent.config import Settings
-from agent.controller import ControllerClient, TransportLinkHeartbeat, parse_peer
+from agent.config import Settings, TransportConfig
+from agent.controller import (
+    ControllerClient,
+    OverlayConfig,
+    Peer,
+    TransportLinkHeartbeat,
+    parse_overlay_config,
+    parse_peer,
+)
 from agent.state import NodeState
 from agent import state as state_store
 
@@ -71,14 +79,47 @@ async def heartbeat_loop(
 
 
 def _transport_reports(settings: Settings) -> list[TransportLinkHeartbeat]:
-    return [
-        TransportLinkHeartbeat(
-            name=settings.TRANSPORT_NAME,
-            kind=settings.TRANSPORT_KIND,
-            endpoint_port=settings.ENDPOINT_PORT,
-            interface_name=settings.INTERFACE,
+    reports: list[TransportLinkHeartbeat] = []
+    for transport in settings.transport_configs():
+        reports.append(
+            TransportLinkHeartbeat(
+                name=transport.name,
+                kind=transport.kind,
+                wireguard_public_key=wg.ensure_private_key(transport.private_key_file),
+                endpoint_port=transport.endpoint_port,
+                interface_name=transport.interface,
+            )
         )
-    ]
+    return reports
+
+
+def _transport_config_by_kind(settings: Settings) -> dict[str, TransportConfig]:
+    return {item.kind: item for item in settings.transport_configs()}
+
+
+def _apply_overlay_config(settings: Settings, overlay: OverlayConfig) -> None:
+    transport_by_kind = _transport_config_by_kind(settings)
+    peers_by_kind: dict[str, list[Peer]] = defaultdict(list)
+    for peer in overlay.peers:
+        peers_by_kind[peer.transport_kind or "internet"].append(peer)
+
+    for transport in overlay.transports:
+        local = transport_by_kind.get(transport.kind)
+        if local is None:
+            logger.warning("Controller returned transport %s but agent is not configured for it", transport.kind)
+            continue
+        wg.setup_interface(
+            interface=local.interface,
+            vpn_ip=transport.overlay_vpn_ip,
+            private_key_file=local.private_key_file,
+            listen_port=local.endpoint_port,
+        )
+        wg.sync_peers(
+            local.interface,
+            peers_by_kind.get(transport.kind, []),
+            local.private_key_file,
+            local.endpoint_port,
+        )
 
 
 WS_RECONNECT_INTERVAL = 5  # seconds between WebSocket reconnect attempts
@@ -97,18 +138,21 @@ async def peer_loop(
     back to a single HTTP poll and then retry the connection after
     WS_RECONNECT_INTERVAL seconds.
     """
-    last_sig: frozenset = frozenset()
+    last_sig_by_kind: dict[str, frozenset] = {}
+    transport_by_kind = _transport_config_by_kind(settings)
 
-    def apply(peers: list) -> None:
-        nonlocal last_sig
-        sig = wg.peer_signature(peers)
-        if sig != last_sig:
-            logger.info("Peer list changed (%d peer(s)) — syncing", len(peers))
-            wg.sync_peers(
-                settings.INTERFACE, peers,
-                settings.PRIVATE_KEY_FILE, settings.ENDPOINT_PORT,
-            )
-            last_sig = sig
+    def apply(peers: list[Peer]) -> None:
+        grouped: dict[str, list[Peer]] = defaultdict(list)
+        for peer in peers:
+            grouped[peer.transport_kind or "internet"].append(peer)
+        for kind, local in transport_by_kind.items():
+            transport_peers = grouped.get(kind, [])
+            sig = wg.peer_signature(transport_peers)
+            if sig == last_sig_by_kind.get(kind):
+                continue
+            logger.info("Peer list changed for %s (%d peer(s)) — syncing", kind, len(transport_peers))
+            wg.sync_peers(local.interface, transport_peers, local.private_key_file, local.endpoint_port)
+            last_sig_by_kind[kind] = sig
 
     while True:
         try:
@@ -119,14 +163,20 @@ async def peer_loop(
                     if data.get("type") == "ping":
                         await ws.send(json.dumps({"type": "pong"}))
                         continue
+                    if "transports" in data:
+                        overlay = parse_overlay_config(data)
+                        _apply_overlay_config(settings, overlay)
+                        apply(overlay.peers)
+                        continue
                     peers = [parse_peer(p) for p in data["peers"]]
                     apply(peers)
 
         except Exception as exc:
             logger.warning("Peer stream disconnected: %s — falling back to poll", exc)
             try:
-                peers = await client.get_peers(node.node_id, node.auth_token)
-                apply(peers)
+                overlay = await client.get_overlay_config(node.node_id, node.auth_token)
+                _apply_overlay_config(settings, overlay)
+                apply(overlay.peers)
             except Exception as poll_exc:
                 logger.warning("Peer poll failed: %s", poll_exc)
 
@@ -136,9 +186,10 @@ async def peer_loop(
 async def run() -> None:
     settings = Settings()
     client = ControllerClient(settings.CONTROLLER_URL)
+    transports = settings.transport_configs()
 
     # Ensure WireGuard key exists and get public key
-    public_key = wg.ensure_private_key(settings.PRIVATE_KEY_FILE)
+    public_key = wg.ensure_private_key(transports[0].private_key_file)
     logger.info("WireGuard public key: %s", public_key)
 
     # Load existing state or register for the first time
@@ -148,7 +199,7 @@ async def run() -> None:
         resp = await client.register(
             name=settings.NODE_NAME,
             wireguard_public_key=public_key,
-            endpoint_port=settings.ENDPOINT_PORT,
+            endpoint_port=transports[0].endpoint_port,
             claim_token=settings.CLAIM_TOKEN or settings.PREAUTH_TOKEN,
         )
         node = NodeState(
@@ -173,25 +224,21 @@ async def run() -> None:
     await wait_until_active(client, node, settings)
 
     # Bring up the interface and load the initial peer list (with retry)
-    peers: list = []
+    overlay: OverlayConfig | None = None
     for attempt in range(1, 11):
         try:
-            peers = await client.get_peers(node.node_id, node.auth_token)
+            overlay = await client.get_overlay_config(node.node_id, node.auth_token)
             break
         except Exception as exc:
             if attempt == 10:
                 raise
             logger.warning(
-                "Failed to fetch initial peer list (attempt %d/10): %s — retrying in 5s", attempt, exc
+                "Failed to fetch initial overlay config (attempt %d/10): %s — retrying in 5s", attempt, exc
             )
             await asyncio.sleep(5)
-    wg.setup_interface(
-        interface=settings.INTERFACE,
-        vpn_ip=node.vpn_ip,
-        private_key_file=settings.PRIVATE_KEY_FILE,
-        listen_port=settings.ENDPOINT_PORT,
-    )
-    wg.sync_peers(settings.INTERFACE, peers, settings.PRIVATE_KEY_FILE, settings.ENDPOINT_PORT)
+    if overlay is None:
+        raise RuntimeError("Controller did not return overlay config")
+    _apply_overlay_config(settings, overlay)
 
     # Fetch and apply FRR BGP config (no-op if FRR is not installed)
     try:
@@ -200,7 +247,7 @@ async def run() -> None:
     except Exception as exc:
         logger.warning("Could not apply FRR config: %s", exc)
 
-    logger.info("Interface %s is up — entering main loop", settings.INTERFACE)
+    logger.info("Configured %d transport interface(s) — entering main loop", len(overlay.transports))
 
     loop = asyncio.get_running_loop()
     shutdown_event = asyncio.Event()
