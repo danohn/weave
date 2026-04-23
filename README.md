@@ -110,7 +110,7 @@ docker compose -f docker-compose.with-traefik.yml -f docker-compose.dev.yml up -
 | Variable | Required | Description |
 |---|---|---|
 | `WEAVE_DOMAIN` | Yes | Domain Traefik routes to the dashboard and API |
-| `WEAVE_VERSION` | No | GHCR image tag to deploy (default: `main`) |
+| `WEAVE_VERSION` | No | GHCR image tag to deploy (default: current release tag, e.g. `v0.1.0`) |
 | `SESSION_SECRET` | Yes | Secret key for signing sessions |
 | `SESSION_COOKIE_SECURE` | No | Force Secure session cookies on/off (auto-enables when `WEAVE_DOMAIN` is set) |
 | `OIDC_ISSUER` | Yes | OIDC provider issuer URL |
@@ -164,6 +164,14 @@ Upgrade an installed agent:
 ```bash
 uv tool upgrade weave-agent
 ```
+
+Version bumps and release tags are managed with `bump-my-version` from the repository root:
+
+```bash
+uv run --directory controller bump-my-version bump patch
+```
+
+That updates the shared repo release version, creates a release commit, and tags it as `vX.Y.Z`. Pushing the tag triggers the GitHub Actions workflows that publish `weave-agent`, publish the Docker images, and create the GitHub release automatically.
 
 ## Installing an edge node
 

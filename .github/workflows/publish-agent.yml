@@ -1,9 +1,9 @@
 name: Publish Agent Package
 
 on:
-  release:
-    types:
-      - published
+  push:
+    tags:
+      - "v*"
   workflow_dispatch:
 
 concurrency:
@@ -27,7 +27,6 @@ jobs:
           python-version: "3.12"
 
       - name: Validate release tag matches agent version
-        if: github.event_name == 'release'
         working-directory: ./agent
         run: |
           python - <<'PY'
@@ -36,7 +35,7 @@ jobs:
 
           version = tomllib.loads(Path("pyproject.toml").read_text())["project"]["version"]
           expected = f"v{version}"
-          actual = "${{ github.event.release.tag_name }}"
+          actual = "${{ github.ref_name }}"
           if actual != expected:
               raise SystemExit(
                   f"Release tag {actual!r} does not match agent version {expected!r}"
