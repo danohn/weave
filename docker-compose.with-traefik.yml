@@ -15,12 +15,9 @@ services:
       - backend
 
   nginx:
-    image: nginx:alpine
+    build: ./frontend
     container_name: weave-ui
     restart: unless-stopped
-    volumes:
-      - ./frontend:/usr/share/nginx/html:ro
-      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
     networks:
       - backend
     labels:
@@ -28,10 +25,10 @@ services:
       - "traefik.docker.network=weave_backend"
       - "traefik.http.routers.weave-ui.rule=Host(`${WEAVE_DOMAIN:?WEAVE_DOMAIN env var must be set}`)"
       - "traefik.http.routers.weave-ui.entrypoints=web"
-      - "traefik.http.routers.weave-ui.priority=10"
+      - "traefik.http.routers.weave-ui.priority=50"
       - "traefik.http.routers.weave-ui.service=weave-ui"
       - "traefik.http.services.weave-ui.loadBalancer.server.port=80"
-      - "traefik.http.routers.weave-ui.middlewares=${TRAEFIK_MIDDLEWARE:-}"
+      - "traefik.http.routers.weave-ui.middlewares=${TRAEFIK_MIDDLEWARE_UI:-${TRAEFIK_MIDDLEWARE:-}}"
 
   controller:
     build: ./controller
@@ -49,14 +46,20 @@ services:
       - backend
     environment:
       DATABASE_URL: "sqlite+aiosqlite:////app/data/weave.db"
-      ADMIN_TOKEN: "${ADMIN_TOKEN:?ADMIN_TOKEN env var must be set}"
+      ADMIN_TOKEN: "${ADMIN_TOKEN:-}"
+      SESSION_SECRET: "${SESSION_SECRET:?SESSION_SECRET env var must be set}"
+      OIDC_ISSUER: "${OIDC_ISSUER:?OIDC_ISSUER env var must be set}"
+      OIDC_CLIENT_ID: "${OIDC_CLIENT_ID:?OIDC_CLIENT_ID env var must be set}"
+      OIDC_CLIENT_SECRET: "${OIDC_CLIENT_SECRET:?OIDC_CLIENT_SECRET env var must be set}"
+      OIDC_REDIRECT_URI: "${OIDC_REDIRECT_URI:-}"
+      OIDC_ADMIN_GROUP: "${OIDC_ADMIN_GROUP:-}"
       VPN_SUBNET: "${VPN_SUBNET:-10.0.0.0/24}"
       WEAVE_DOMAIN: "${WEAVE_DOMAIN:?WEAVE_DOMAIN env var must be set}"
       CONTROLLER_ENDPOINT_PORT: "${CONTROLLER_ENDPOINT_PORT:-51820}"
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=weave_backend"
-      - "traefik.http.routers.weave-api.rule=Host(`${WEAVE_DOMAIN}`) && (PathPrefix(`/api`) || PathPrefix(`/ws`) || PathPrefix(`/health`))"
+      - "traefik.http.routers.weave-api.rule=Host(`${WEAVE_DOMAIN}`) && (PathPrefix(`/api`) || PathPrefix(`/ws`) || PathPrefix(`/health`) || PathPrefix(`/auth`))"
       - "traefik.http.routers.weave-api.entrypoints=web"
       - "traefik.http.routers.weave-api.priority=100"
       - "traefik.http.routers.weave-api.service=weave-api"
