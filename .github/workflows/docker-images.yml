@@ -69,7 +69,7 @@ jobs:
 
       - name: Run controller tests
         working-directory: ./controller
-        run: uv run pytest -v
+        run: ./.venv/bin/pytest -v
 
   build:
     needs:

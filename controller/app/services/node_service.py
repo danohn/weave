@@ -153,15 +153,6 @@ async def _create_default_transport_link(
     return link
 
 
-async def _get_active_transport_link(session: AsyncSession, node_id: str) -> TransportLink | None:
-    result = await session.execute(
-        select(TransportLink)
-        .where(TransportLink.node_id == node_id)
-        .order_by(TransportLink.is_active.desc(), TransportLink.priority.asc(), TransportLink.created_at.asc())
-    )
-    return result.scalars().first()
-
-
 def _interface_name_for_kind(kind: TransportKind) -> str:
     return f"weave-{kind.value}"
 
@@ -246,10 +237,10 @@ def select_active_transport_links(links: list[TransportLink]) -> list[TransportL
     return ordered
 
 
-def canonical_transport_link(node: Node) -> TransportLink | None:
+def canonical_transport_link(links: list[TransportLink]) -> TransportLink | None:
     links = [
         link
-        for link in getattr(node, "transport_links", [])
+        for link in links
         if link.overlay_vpn_ip
     ]
     if not links:
@@ -265,8 +256,14 @@ def canonical_transport_link(node: Node) -> TransportLink | None:
 
 
 async def sync_node_compat_fields(session: AsyncSession, node: Node) -> Node:
-    active_link = await _get_active_transport_link(session, node.id)
-    canonical_link = canonical_transport_link(node)
+    transport_link_result = await session.execute(
+        select(TransportLink)
+        .where(TransportLink.node_id == node.id)
+        .order_by(TransportLink.is_active.desc(), TransportLink.priority.asc(), TransportLink.created_at.asc())
+    )
+    transport_links = list(transport_link_result.scalars().all())
+    active_link = transport_links[0] if transport_links else None
+    canonical_link = canonical_transport_link(transport_links)
     primary_prefix = None
     if node.site_id:
         prefix_result = await session.execute(
